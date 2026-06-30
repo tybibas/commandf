@@ -1,0 +1,269 @@
+// Command F — HTTP client.
+//
+// Thin wrapper over the Modal FastAPI service. Auth pattern (Supabase JWT as a
+// Bearer token) is lifted verbatim from the original CommandFPage. Every shape
+// here is documented in execution/commandf/UI_ENDPOINT_CONTRACTS.md — the three
+// `*Stub` endpoints (deck / survey / upload) are not live yet and throw a typed
+// NotImplemented so their surfaces can render an honest "preview" state.
+
+import { supabase } from '../../lib/supabase';
+
+export const COMMANDF_URL = import.meta.env.VITE_MODAL_COMMANDF_URL as string | undefined;
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+export type Source = {
+  n?: number;
+  file_name: string;
+  file_id?: string;
+  link?: string;
+  snippet?: string;
+  similarity?: number;
+};
+
+export type Message = {
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Source[];
+  error?: boolean;
+};
+
+export type Session = { id: string; title: string; updated_at: string };
+export type ModelOption = { id: string; name: string; cost?: string };
+
+export type KnowledgeFile = { file_name: string; chunks: number; modified: string | null };
+
+export type Briefing = {
+  client_context: string | null;
+  clients: { slug: string; name: string }[];
+  signals: {
+    pending: number; active: number; total: number;
+    by_event: { key: string; label: string; count: number }[];
+    by_client: { client: string; count: number }[];
+  };
+  outreach: { pipeline: number; sent: number };
+  engine_recs: { pending: number };
+  knowledge: {
+    doc_count: number; chunk_count: number;
+    files: KnowledgeFile[];
+    last_sync_at?: string | null;
+    last_sync_status?: string | null;
+    drive_connected: boolean;
+  };
+};
+
+export type SourcesStatus = { google_drive: boolean; dropbox: boolean };
+
+export type SyncStatus = {
+  status: string;
+  files_indexed?: number;
+  files_added?: number;
+  files_updated?: number;
+  files_removed?: number;
+  message?: string;
+  last_sync_at?: string | null;
+};
+
+export type ChatResponse = {
+  response: string;
+  sources?: Source[];
+  model_used?: string;
+  session_id?: string;
+};
+
+// Job shapes for the not-yet-live generation endpoints.
+export type JobStatus = {
+  status: 'queued' | 'running' | 'complete' | 'error';
+  slide_count?: number;
+  sheet_count?: number;
+  title?: string;
+  download_url?: string;
+  preview_urls?: string[];
+  placeholders?: string[];
+  error?: string;
+};
+
+// ── Errors ─────────────────────────────────────────────────────────────────
+
+export class NotConfiguredError extends Error {
+  constructor() { super('Command F is not configured.'); this.name = 'NotConfiguredError'; }
+}
+export class NotSignedInError extends Error {
+  constructor() { super('Not signed in — please re-authenticate.'); this.name = 'NotSignedInError'; }
+}
+/** Thrown by the three endpoints that don't exist on the backend yet. */
+export class EndpointPendingError extends Error {
+  constructor(endpoint: string) {
+    super(`${endpoint} is not available yet — backend endpoint pending.`);
+    this.name = 'EndpointPendingError';
+  }
+}
+
+// ── Internals ────────────────────────────────────────────────────────────────
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new NotSignedInError();
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+async function bearer(): Promise<string> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new NotSignedInError();
+  return token;
+}
+
+/** Returns the current access token, or null if not signed in (never throws). */
+export async function currentToken(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+function requireUrl(): string {
+  if (!COMMANDF_URL) throw new NotConfiguredError();
+  return COMMANDF_URL;
+}
+
+async function json<T>(res: Response): Promise<T> {
+  if (!res.ok) {
+    const detail = await res.text().catch(() => '');
+    if (res.status === 401) throw new NotSignedInError();
+    throw new Error(detail || `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<T>;
+}
+
+// ── Live endpoints ───────────────────────────────────────────────────────────
+
+export async function fetchModels(): Promise<ModelOption[]> {
+  const url = requireUrl();
+  const r = await fetch(`${url}/models`).then((x) => x.json()).catch(() => ({ models: [] }));
+  return r.models || [];
+}
+
+export async function fetchSessions(): Promise<Session[]> {
+  const url = requireUrl();
+  const r = await fetch(`${url}/sessions`, { headers: await authHeaders() })
+    .then((x) => x.json()).catch(() => ({ sessions: [] }));
+  return r.sessions || [];
+}
+
+export async function fetchBriefing(clientContext: string): Promise<Briefing | null> {
+  const url = requireUrl();
+  const qs = clientContext ? `?client_context=${encodeURIComponent(clientContext)}` : '';
+  try {
+    return await fetch(`${url}/briefing${qs}`, { headers: await authHeaders() }).then((r) => r.json());
+  } catch {
+    return null; // non-fatal — the page works without the briefing
+  }
+}
+
+export async function fetchHistory(sessionId: string): Promise<Message[]> {
+  const url = requireUrl();
+  const r = await fetch(`${url}/history?session_id=${encodeURIComponent(sessionId)}`, { headers: await authHeaders() })
+    .then((x) => x.json());
+  return (r.history || []).map((h: any) => ({
+    role: h.role, content: h.content, sources: h.sources || [],
+  }));
+}
+
+export async function sendChat(
+  message: string, model: string, sessionId: string | null,
+): Promise<ChatResponse> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/chat`, {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: JSON.stringify({ message, model, session_id: sessionId }),
+  });
+  return json<ChatResponse>(res);
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const url = requireUrl();
+  await fetch(`${url}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: await authHeaders() });
+}
+
+export async function fetchSourcesStatus(): Promise<SourcesStatus | null> {
+  const url = requireUrl();
+  try {
+    return await fetch(`${url}/sources/status`, { headers: await authHeaders() }).then((r) => r.json());
+  } catch {
+    return null;
+  }
+}
+
+export async function startSync(): Promise<void> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/sync`, { method: 'POST', headers: await authHeaders() });
+  if (!res.ok) throw new Error(await res.text().catch(() => 'Re-index failed.'));
+}
+
+export async function fetchSyncStatus(): Promise<SyncStatus | null> {
+  const url = requireUrl();
+  return fetch(`${url}/sync/status`, { headers: await authHeaders() })
+    .then((r) => r.json()).catch(() => null);
+}
+
+/** Drive OAuth is a full-page redirect (token passed as a query param). */
+export async function connectDriveUrl(): Promise<string> {
+  const url = requireUrl();
+  const token = await bearer();
+  return `${url}/connect/google?token=${encodeURIComponent(token)}`;
+}
+
+// ── Pending endpoints (UI_ENDPOINT_CONTRACTS.md §Needed) ─────────────────────
+// Implemented optimistically: if the endpoint returns 404/501 we surface the
+// preview state; once the backend ships the contract these light up unchanged.
+
+async function postJob(path: string, body: BodyInit, isMultipart: boolean): Promise<{ job_id: string }> {
+  const url = requireUrl();
+  const token = await bearer();
+  const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+  if (!isMultipart) headers['Content-Type'] = 'application/json';
+  const res = await fetch(`${url}${path}`, { method: 'POST', headers, body });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError(path);
+  return json<{ job_id: string }>(res);
+}
+
+export async function generateDeck(input: {
+  request: string; deliverable_type?: string; session_id?: string | null; client_slug?: string;
+}): Promise<{ job_id: string }> {
+  return postJob('/generate-deck', JSON.stringify(input), false);
+}
+
+export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
+  return json<JobStatus>(res);
+}
+
+export async function generateSurveyCompendium(file: File, title?: string): Promise<{ job_id: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  if (title) form.append('title', title);
+  return postJob('/survey-compendium', form, true);
+}
+
+export async function surveyCompendiumStatus(jobId: string): Promise<JobStatus> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/survey-compendium/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/survey-compendium');
+  return json<JobStatus>(res);
+}
+
+export async function uploadDocument(file: File, metadata?: Record<string, unknown>): Promise<{ file_id: string; file_name: string; status: string }> {
+  const url = requireUrl();
+  const token = await bearer();
+  const form = new FormData();
+  form.append('file', file);
+  if (metadata) form.append('metadata', JSON.stringify(metadata));
+  const res = await fetch(`${url}/upload`, {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
+  });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
+  return json<{ file_id: string; file_name: string; status: string }>(res);
+}

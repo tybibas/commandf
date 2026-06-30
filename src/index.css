@@ -1,0 +1,509 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Background Colors */
+  --color-bg-primary: #ffffff;
+  --color-bg-secondary: #f9fafb;
+  --color-bg-tertiary: #f3f4f6;
+  --color-bg-elevated: #ffffff;
+
+  /* Accent (Gold — brand identity, consistent across themes) */
+  --color-accent-primary: #F59E0B;
+  --color-accent-hover: #D97706;
+  --color-accent-pressed: #B45309;
+  --color-accent-muted: rgba(245, 158, 11, 0.15);
+
+  /* Text */
+  --color-text-primary: #111827;
+  --color-text-secondary: #4b5563;
+  --color-text-muted: #9ca3af;
+
+  /* Semantic */
+  --color-success: #059669;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+
+  /* Semantic soft (badge backgrounds, ~0.15 alpha) — light theme */
+  --color-success-soft: rgba(5, 150, 105, 0.15);
+  --color-warning-soft: rgba(245, 158, 11, 0.15);
+  --color-error-soft: rgba(239, 68, 68, 0.15);
+  --color-info-soft: rgba(59, 130, 246, 0.15);
+
+  /* Warning foreground — high-contrast text used on warning fills */
+  --color-warning-fg: var(--color-bg-primary);
+
+  /* Intent Badges */
+  --color-intent-high: #ef4444;
+  --color-intent-medium: #f59e0b;
+  --color-intent-low: #059669;
+
+  /* Borders */
+  --color-border: rgba(0, 0, 0, 0.1);
+  --color-border-light: rgba(0, 0, 0, 0.05);
+
+  /* Focus Ring (a11y — WCAG 2.4.7) */
+  --color-focus-ring: rgba(245, 158, 11, 0.6);
+
+  /* Motion Tokens (legacy aliases — kept for backwards compat) */
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Motion Tokens v2 — canonical (Wave 1) */
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 240ms;
+  --motion-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Radius v2 — kept here so light theme also resolves */
+  --radius-control: 6px;
+  --radius-surface: 10px;
+  --radius-pill: 9999px;
+
+  /* Hairline + surface aliases for light theme */
+  --color-border-hover: rgba(0, 0, 0, 0.16);
+  --color-border-strong: rgba(0, 0, 0, 0.22);
+  --color-hairline: rgba(0, 0, 0, 0.06);
+  /* Floating surfaces (composer, dashboard tiles): soft drop shadow on light. */
+  --elevation-float: 0 1px 2px rgba(16,24,40,0.04), 0 8px 24px -8px rgba(16,24,40,0.10);
+  --elevation-float-hover: 0 2px 4px rgba(16,24,40,0.05), 0 16px 32px -10px rgba(16,24,40,0.14);
+  --surface-resting: var(--color-bg-secondary);
+  --surface-raised: #ffffff;
+  --surface-hover: var(--color-bg-secondary);
+  --surface-pressed: var(--color-bg-tertiary);
+
+  /* Content width */
+  --content-width-max: 1280px;
+  --content-width-prose: 720px;
+
+  /* Intent Radar — heat luminance ramp (light theme: inverted, light→dark).
+   * On white canvas an "empty" cell must read AS canvas; strength rises
+   * toward ink. Cross-theme parity with the dark ramp below. */
+  --color-heat-0: #F3F4F6;  /* 0 — empty / canvas (matches bg-tertiary) */
+  --color-heat-1: #D1D5DB;  /* 1 — weak */
+  --color-heat-2: #6B7280;  /* 2 — medium */
+  --color-heat-3: #111827;  /* 3 — strong (ink) */
+  --color-heat-gold: #F59E0B; /* reserved-decision tick, top-N cap */
+}
+
+.theme-quantifire {
+  /* Premium Dark Charcoal Backgrounds */
+  --color-bg-primary: #0A0C10;
+  --color-bg-secondary: #0F1117;
+  --color-bg-tertiary: #1A1D25;
+  --color-bg-elevated: #161921;
+
+  /* Accent (Amber/Gold) */
+  --color-accent-primary: #F59E0B;
+  --color-accent-hover: #D97706;
+  --color-accent-pressed: #B45309;
+  --color-accent-muted: rgba(245, 158, 11, 0.15);
+
+  /* Light Text for Dark Mode */
+  --color-text-primary: #E5E7EB;
+  --color-text-secondary: #9CA3AF;
+  --color-text-muted: #7E8694;
+
+  /* Dark Borders — hairline ladder (resting → hover raises contrast → strong=focus/selected) */
+  --color-border: rgba(255, 255, 255, 0.10);
+  --color-border-light: rgba(255, 255, 255, 0.06);
+  --color-border-hover: rgba(255, 255, 255, 0.16);
+  --color-border-strong: rgba(255, 255, 255, 0.22);
+  --color-hairline: rgba(255, 255, 255, 0.06);
+
+  /* Elevation ladder — hairlines only on dark; shadows are forbidden in Wave 1 */
+  --elevation-e0: 0 0 0 1px var(--color-border-light);
+  --elevation-e1: 0 0 0 1px var(--color-border);
+  --elevation-e2: 0 0 0 1px var(--color-border-hover);
+  --elevation-e3: 0 0 0 1px var(--color-border-strong);
+  /* Floating surfaces (composer, dashboard tiles): dark carries lift via a
+     brightened ring + faint deep shadow, never a black drop shadow on near-black. */
+  --elevation-float: 0 0 0 1px var(--color-border), 0 8px 24px -12px rgba(0,0,0,0.7);
+  --elevation-float-hover: 0 0 0 1px var(--color-border-hover), 0 12px 32px -12px rgba(0,0,0,0.8);
+
+  /* Surface ladder — semantic aliases over bg-* tokens */
+  --surface-resting: var(--color-bg-secondary);
+  --surface-raised: #13161E;     /* intermediate between elevated and tertiary */
+  --surface-hover: var(--color-bg-secondary);   /* bg unchanged; border carries hover */
+  --surface-pressed: var(--color-bg-tertiary);
+
+  /* Content width */
+  --content-width-max: 1280px;
+  --content-width-prose: 720px;
+
+  /* Semantic — dark-tuned for contrast on charcoal */
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-error: #F87171;
+  --color-info: #60A5FA;
+
+  /* Semantic soft (badge backgrounds, ~0.15 alpha) */
+  --color-success-soft: rgba(16, 185, 129, 0.15);
+  --color-warning-soft: rgba(245, 158, 11, 0.15);
+  --color-error-soft: rgba(248, 113, 113, 0.15);
+  --color-info-soft: rgba(96, 165, 250, 0.15);
+
+  /* Warning foreground — high-contrast text used on warning fills */
+  --color-warning-fg: var(--color-bg-primary);
+
+  /* Intent (dark-tuned to match soft variants) */
+  --color-intent-high: #F87171;
+  --color-intent-medium: #F59E0B;
+  --color-intent-low: #10B981;
+
+  /* Intent soft (badge backgrounds, ~0.15 alpha) */
+  --color-intent-high-soft: rgba(248, 113, 113, 0.15);
+  --color-intent-medium-soft: rgba(245, 158, 11, 0.15);
+  --color-intent-low-soft: rgba(16, 185, 129, 0.15);
+
+  /* Focus Ring (a11y — WCAG 2.4.7) */
+  --color-focus-ring: rgba(245, 158, 11, 0.6);
+
+  /* Intent Radar — heat luminance ramp (dark theme: original locked palette). */
+  --color-heat-0: #0A0A0A;
+  --color-heat-1: #1F1F1F;
+  --color-heat-2: #525252;
+  --color-heat-3: #A3A3A3;
+  --color-heat-gold: #F59E0B;
+
+  /* Radius — locked 3-stop scale (Wave 1) */
+  --radius-control: 6px;     /* button, input, badge, kbd, chip */
+  --radius-surface: 10px;    /* card, panel, modal, sheet */
+  --radius-pill: 9999px;     /* status/intent pills only */
+
+  /* Motion — single source of truth (Wave 1) */
+  --motion-duration-fast: 120ms;
+  --motion-duration-base: 180ms;
+  --motion-duration-slow: 240ms;
+  --motion-ease-out: cubic-bezier(0.32, 0.72, 0, 1);   /* Vercel signature */
+  --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1); /* out-expo spring */
+}
+
+/* Keyboard focus visibility — app-wide (WCAG 2.4.7) */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Primary button pressed state */
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+body {
+  background-color: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+
+.section-header {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+.insight-header {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.6;
+  opacity: 0.95;
+}
+
+.data-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.7;
+}
+
+.data-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+  }
+
+  .card-shadow {
+    box-shadow: 0 2px 8px 0 rgba(0, 0, 0, 0.4);
+  }
+
+  .card-shadow-sm {
+    box-shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .card-shadow-lg {
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.5),
+                0 4px 6px -2px rgba(0, 0, 0, 0.3);
+  }
+
+  .shadow-gold {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.3);
+  }
+
+  .shadow-gold-lg {
+    box-shadow: 0 0 30px rgba(245, 158, 11, 0.4);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+  }
+}
+
+.glow-gold {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+  animation-fill-mode: both;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.3s ease-out;
+  animation-fill-mode: both;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-shimmer,
+.signals-skeleton-sweep {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    to right,
+    var(--color-bg-tertiary) 0%,
+    var(--color-bg-elevated) 50%,
+    var(--color-bg-tertiary) 100%
+  );
+  background-size: 2000px 100%;
+}
+
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-count-up {
+  animation: count-up 0.4s ease-out;
+}
+
+/* =========================================================================
+ * Token v2 — Wave 1 utilities (Linear/Vercel dark)
+ * ========================================================================= */
+
+/* Global motion accessibility — WCAG 2.3.3 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer utilities {
+  /* Tabular numerics — for every metric, KPI, count, currency, table cell */
+  .font-num {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum" 1, "ss01" 1;
+  }
+
+  /* Eyebrow — single canonical label style (kills 3 competing tracking values) */
+  .eyebrow {
+    font-size: 11px;
+    line-height: 1;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--color-text-muted);
+    font-weight: 500;
+  }
+
+  /* Hairline — single-pixel divider on dark */
+  .hairline-b { border-bottom: 1px solid var(--color-hairline); }
+  .hairline-t { border-top: 1px solid var(--color-hairline); }
+  .hairline-l { border-left: 1px solid var(--color-hairline); }
+  .hairline-r { border-right: 1px solid var(--color-hairline); }
+
+  /* Interactive surface — one primitive replaces ~40 ad-hoc hover combos.
+   * Hover RAISES border contrast (fixes the inversion bug). */
+  .surface-interactive {
+    border: 1px solid var(--color-border-light);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-surface);
+    transition: border-color var(--motion-duration-fast) var(--motion-ease-out),
+                background-color var(--motion-duration-base) var(--motion-ease-out);
+  }
+  .surface-interactive:hover { border-color: var(--color-border-hover); }
+  .surface-interactive:active { background: var(--color-bg-tertiary); }
+  .surface-interactive:focus-visible {
+    outline: 1px solid var(--color-focus-ring);
+    outline-offset: 2px;
+  }
+
+  /* Pending — operator-action-required treatment (2px gold left rule). */
+  .surface-pending {
+    border-left: 2px solid var(--color-warning);
+  }
+
+  /* SignalRail first-visit pulse — one-shot orientation cue on the topmost
+   * gold (decision-required) tick. Gated by localStorage + prefers-reduced-motion. */
+  @keyframes signalrail-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+  }
+
+  /* Content width helpers */
+  .max-w-content { max-width: var(--content-width-max); }
+  .max-w-prose-tight { max-width: var(--content-width-prose); }
+
+  /* ── Intent Radar (Wave 3 Innovator #5) ─────────────────────────────
+   * Locked 4-stop luminance ramp + uniform cell geometry. Reference only
+   * — HeatGrid.tsx is the single source of truth for the actual values.
+   * If you find yourself wanting to add a 5th stop, hue, or size encoding,
+   * the Intent Radar primitive has crossed into "Salesforce heatmap chart"
+   * territory. Don't. Add a second primitive instead.
+   *
+   *   --heat-stop-0: #0A0A0A   (empty / canvas)
+   *   --heat-stop-1: #1F1F1F   (weak / graphite)
+   *   --heat-stop-2: #525252   (medium / silver)
+   *   --heat-stop-3: #A3A3A3   (strong / bone)
+   *   --heat-gold:   #F59E0B   (reserved-decision tick, top-20 cap)
+   *
+   * Cell: 14px × 14px, 2px gap, 2px radius. Never resize.
+   */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Float elevation utilities — replaces all inline style={{boxShadow:'var(--elevation-float)'}} */
+  .shadow-float { box-shadow: var(--elevation-float); }
+  .shadow-float-hover { box-shadow: var(--elevation-float-hover); }
+
+  /* Typing indicator dot — 1s opacity pulse, stagger via inline animationDelay */
+  @keyframes typing-pulse {
+    0%, 100% { opacity: 0.3; }
+    50%       { opacity: 1; }
+  }
+  .typing-dot {
+    animation: typing-pulse 1s ease-in-out infinite;
+    animation-fill-mode: both;
+  }
+
+  /* Skeleton placeholder — reuses the shimmer keyframe */
+  .skeleton {
+    background: linear-gradient(
+      to right,
+      var(--color-bg-tertiary) 0%,
+      var(--color-bg-elevated) 50%,
+      var(--color-bg-tertiary) 100%
+    );
+    background-size: 2000px 100%;
+    animation: shimmer 2s infinite linear;
+  }
+}
