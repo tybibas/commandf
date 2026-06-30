@@ -46,8 +46,9 @@
   --color-border: rgba(0, 0, 0, 0.1);
   --color-border-light: rgba(0, 0, 0, 0.05);
 
-  /* Focus Ring (a11y — WCAG 2.4.7) */
-  --color-focus-ring: rgba(245, 158, 11, 0.6);
+  /* Focus Ring (a11y — WCAG 2.4.7). Neutral ink, NOT gold — gold is reserved
+     for "operator decision required" and reads wrong on a chat input. */
+  --color-focus-ring: rgba(17, 24, 39, 0.35);
 
   /* Motion Tokens (legacy aliases — kept for backwards compat) */
   --duration-fast: 150ms;
@@ -163,8 +164,8 @@
   --color-intent-medium-soft: rgba(245, 158, 11, 0.15);
   --color-intent-low-soft: rgba(16, 185, 129, 0.15);
 
-  /* Focus Ring (a11y — WCAG 2.4.7) */
-  --color-focus-ring: rgba(245, 158, 11, 0.6);
+  /* Focus Ring (a11y — WCAG 2.4.7). Neutral light ink, NOT gold. */
+  --color-focus-ring: rgba(229, 231, 235, 0.4);
 
   /* Intent Radar — heat luminance ramp (dark theme: original locked palette). */
   --color-heat-0: #0A0A0A;
