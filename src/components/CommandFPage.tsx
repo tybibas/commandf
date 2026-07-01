@@ -7,7 +7,7 @@ import { useClientStrategy } from '../contexts/ClientStrategyContext';
 
 import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,
-  fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChat, deleteSession,
+  fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChatStream, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentToken, currentUserId, NotSignedInError,
   uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt,
 } from './commandf/api';
@@ -20,6 +20,7 @@ import {
 import { timeAgo } from './commandf/util';
 import Composer from './commandf/Composer';
 import Conversation from './commandf/Conversation';
+import type { ThinkingStep } from './commandf/ThinkingIndicator';
 import Landing, { type QuickAction } from './commandf/Landing';
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
@@ -79,6 +80,8 @@ export function CommandFPage({
   const [showPlus, setShowPlus] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [deckSeed, setDeckSeed] = useState('');
+  const [pinnedFileIds, setPinnedFileIds] = useState<string[]>([]);  // source-pinning for deck build
+  const [steps, setSteps] = useState<ThinkingStep[]>([]);  // live agent progress
   const [surface, setSurface] = useState<Surface>('home');
   const [focusKey, setFocusKey] = useState(0);
 
@@ -268,8 +271,15 @@ export function CommandFPage({
     setSurface('chat');
     setMessages((prev) => [...prev, { role: 'user', content: msg }]);
     setSending(true);
+    setSteps([]);
     try {
-      const data = await sendChat(msg, model, sessionId);
+      // Streaming: live step-progress feeds the thinking indicator. Resolves with
+      // the final answer even if a proxy buffers the events (steps just arrive at
+      // the end). No auto-retry on error — that would double-charge the query.
+      const data = await sendChatStream(msg, model, sessionId, (evt) =>
+        setSteps((prev) => [...prev, {
+          phase: evt.phase, step: evt.step, label: evt.label, tool: evt.tool, count: evt.count,
+        } as ThinkingStep]));
       if (data.session_id && !sessionId) {
         // New thread — optimistically insert it at the top of the rail so it
         // appears instantly (title = first message), then reconcile with server.
@@ -287,6 +297,7 @@ export function CommandFPage({
       setMessages((prev) => [...prev, { role: 'assistant', content: m, error: true }]);
     } finally {
       setSending(false);
+      setSteps([]);
     }
   };
 
@@ -349,9 +360,10 @@ export function CommandFPage({
 
   // Source → deck handoff: open the deck surface seeded with the question that
   // produced these sources, so "build a deck from these" starts grounded.
-  const buildDeckFromChat = useCallback(() => {
+  const buildDeckFromChat = useCallback((fileIds: string[]) => {
     const lastUser = [...messages].reverse().find((m) => m.role === 'user');
     setDeckSeed(lastUser?.content ?? '');
+    setPinnedFileIds(fileIds || []);  // source-pinning: ground the deck in the shown docs
     setSurface('deck');
   }, [messages]);
 
@@ -503,12 +515,12 @@ export function CommandFPage({
           </div>
         )}
         {surface === 'deck' ? (
-          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} onOpenSurvey={() => setSurface('survey')} />
+          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} initialFileIds={pinnedFileIds} onOpenSurvey={() => setSurface('survey')} />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (
           <>
-            <Conversation messages={messages} sending={sending} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
+            <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>
             </div>

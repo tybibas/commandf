@@ -90,6 +90,7 @@ export type JobStatus = {
   download_url?: string;
   preview_urls?: string[];
   placeholders?: string[];
+  plan?: Record<string, unknown>;  // carried on a completed deck so slides can be edited
   error?: string;
 };
 
@@ -235,6 +236,43 @@ export async function sendChat(
   return json<ChatResponse>(res);
 }
 
+/** Streaming chat: invokes `onStep` per live progress event and resolves with the
+ *  final answer. The backend runs to completion + persists regardless of the
+ *  stream, so a closed tab never loses the answer (recovered via history on reopen). */
+export async function sendChatStream(
+  message: string, model: string | undefined, sessionId: string | null,
+  onStep: (evt: { phase?: string; step?: number; label?: string; tool?: string; count?: number }) => void,
+): Promise<ChatResponse> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/chat/stream`, {
+    method: 'POST',
+    headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, model, session_id: sessionId }),
+  });
+  if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`);
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let final: ChatResponse | null = null;
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const parts = buf.split('\n\n');
+    buf = parts.pop() ?? '';
+    for (const p of parts) {
+      const line = p.split('\n').find((l) => l.startsWith('data: '));
+      if (!line) continue;
+      const evt = JSON.parse(line.slice(6));
+      if (evt.type === 'step') onStep(evt);
+      else if (evt.type === 'done') final = evt as ChatResponse;
+      else if (evt.type === 'error') throw new Error(evt.detail || 'chat failed');
+    }
+  }
+  if (!final) throw new Error('stream ended without an answer');
+  return final;
+}
+
 export async function deleteSession(sessionId: string): Promise<void> {
   const url = requireUrl();
   await fetch(`${url}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: await authHeaders() });
@@ -287,6 +325,7 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
  * the backend detail so the surface can show an honest error. */
 export async function generateDeckOutline(input: {
   request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
+  file_ids?: string[];  // source-pinning: bias the evidence pool to these Drive docs
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
@@ -305,11 +344,30 @@ export async function generateDeck(input: {
   // the (edited) `plan` object from generateDeckOutline; the backend also unwraps
   // a full { plan: {...} } envelope.
   approved_plan?: Record<string, unknown>;
+  file_ids?: string[];  // source-pinning: bias the evidence pool to these Drive docs
   // Length / chunked-build hints. The backend reads these from `request` prose;
   // sent structured too for forward-compat (unknown fields are ignored server-side).
   slide_count?: number; deck_scope?: 'full' | 'section'; section_start?: number;
 }): Promise<{ job_id: string }> {
   return postJob('/generate-deck', JSON.stringify(input), false);
+}
+
+/** Re-author ONE slide of a built deck from a natural-language edit and re-render
+ *  in place. Synchronous: returns the fresh, fully re-rendered deck result. */
+export async function editDeckSlide(input: {
+  job_id: string; request: string; approved_plan: Record<string, unknown>;
+  slide_index: number; edit_instruction: string;
+  deliverable_type?: string; client_slug?: string; session_id?: string | null; file_ids?: string[];
+}): Promise<JobStatus> {
+  const url = requireUrl();
+  const token = await bearer();
+  const res = await fetch(`${url}/generate-deck/edit-slide`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/edit-slide');
+  return json<JobStatus>(res);
 }
 
 export async function generateDeckStatus(jobId: string): Promise<JobStatus> {

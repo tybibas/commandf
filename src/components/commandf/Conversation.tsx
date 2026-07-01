@@ -4,6 +4,7 @@ import CommandFMarkdown from '../CommandFMarkdown';
 import { SourceList } from './SourceCard';
 import { groupSources } from './util';
 import type { Message } from './api';
+import ThinkingIndicator, { type ThinkingStep } from './ThinkingIndicator';
 
 /**
  * One assistant answer. Owns its own citation coordination: the set of citation
@@ -146,27 +147,8 @@ function MessageRow({ m, onReuse, onBuildDeck }: { m: Message; onReuse?: (prompt
   return <AssistantMessage m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />;
 }
 
-function TypingIndicator() {
-  return (
-    <div className="flex justify-start py-2 animate-fade-in">
-      <div className="flex items-center gap-2.5 text-caption text-text-muted">
-        <span className="flex gap-1">
-          {[0, 160, 320].map((d) => (
-            <span
-              key={d}
-              className="w-1.5 h-1.5 rounded-full bg-text-muted/50 typing-dot"
-              style={{ animationDelay: `${d}ms` }}
-            />
-          ))}
-        </span>
-        <span>searching the firm's work…</span>
-      </div>
-    </div>
-  );
-}
-
 /** The scrolling transcript. Auto-sticks to the bottom on new content. */
-export default function Conversation({ messages, sending, onReuse, onBuildDeck }: { messages: Message[]; sending: boolean; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
+export default function Conversation({ messages, sending, steps, onReuse, onBuildDeck }: { messages: Message[]; sending: boolean; steps?: ThinkingStep[]; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -177,7 +159,7 @@ export default function Conversation({ messages, sending, onReuse, onBuildDeck }
         behavior: reduce ? 'auto' : 'smooth',
       });
     });
-  }, [messages, sending]);
+  }, [messages, sending, steps]);
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 scrollbar-thin">
@@ -185,7 +167,11 @@ export default function Conversation({ messages, sending, onReuse, onBuildDeck }
         {messages.map((m, i) => (
           <MessageRow key={`${m.role}-${i}-${m.content.length}`} m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
         ))}
-        {sending && <TypingIndicator />}
+        {sending && (
+          <div className="flex justify-start">
+            <ThinkingIndicator steps={steps} />
+          </div>
+        )}
       </div>
     </div>
   );

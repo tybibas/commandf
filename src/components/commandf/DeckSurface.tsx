@@ -3,11 +3,12 @@ import {
   Presentation, Sparkles, ArrowLeft, ArrowRight, ArrowUpRight, Database, Layers, FileText, Info,
 } from 'lucide-react';
 import {
-  generateDeck, generateDeckStatus, generateDeckOutline,
+  generateDeck, generateDeckStatus, generateDeckOutline, editDeckSlide,
   DECK_ENUM_TYPES, EndpointPendingError, type DeckOutline as Outline,
 } from './api';
 import { useJob } from './useJob';
-import { RunningPanel, ErrorPanel, ResultPanel } from './generationUI';
+import ComposerTools from './ComposerTools';
+import { RunningPanel, ErrorPanel, ResultPanel, type SlideEdit } from './generationUI';
 import DeckOutline from './DeckOutline';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -50,12 +51,15 @@ const LENGTHS: { id: string; label: string }[] = [
 type OutlinePhase = 'idle' | 'loading' | 'error' | 'pending';
 
 export default function DeckSurface({
-  onBack, clientSlug, sessionId, initialBrief, onOpenSurvey,
+  onBack, clientSlug, sessionId, initialBrief, initialFileIds, onOpenSurvey,
 }: {
   onBack: () => void;
   clientSlug?: string;
   sessionId?: string | null;
   initialBrief?: string;
+  // Source-pinning (item 5): when the deck was launched from "Build a deck from
+  // these sources", these Drive file_ids scope/seed retrieval to those documents.
+  initialFileIds?: string[];
   onOpenSurvey?: () => void;
 }) {
   const [type, setType] = useState('');
@@ -66,6 +70,18 @@ export default function DeckSurface({
   const [outline, setOutline] = useState<Outline | null>(null);
   const [outlinePhase, setOutlinePhase] = useState<OutlinePhase>('idle');
   const [outlineError, setOutlineError] = useState('');
+
+  // The approved plan the current deck was built from — needed so a per-slide
+  // edit can re-author one slide in the SAME plan context (no re-plan).
+  const [builtPlan, setBuiltPlan] = useState<Record<string, unknown> | null>(null);
+  const [editBusy, setEditBusy] = useState<number | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  // Local override of the completed result after a per-slide edit (a fresh
+  // download_url + preview_urls). Kept in DeckSurface (not useJob) so slide
+  // editing needs no change to the shared job hook.
+  const [editedResult, setEditedResult] = useState<import('./api').JobStatus | null>(null);
+
+  const fileIds = initialFileIds && initialFileIds.length > 0 ? initialFileIds : undefined;
 
   const job = useJob(generateDeckStatus);
   const jobActive = job.phase !== 'idle';
@@ -89,7 +105,8 @@ export default function DeckSurface({
     setOutlinePhase('loading'); setOutlineError('');
     try {
       const o = await generateDeckOutline({
-        request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug, session_id: sessionId,
+        request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
+        session_id: sessionId, file_ids: fileIds,
       });
       setOutline(o); setOutlinePhase('idle');
     } catch (e: any) {
@@ -99,19 +116,56 @@ export default function DeckSurface({
   };
 
   const buildFromPlan = (approvedPlan: Record<string, unknown>) => {
+    setBuiltPlan(approvedPlan);
     job.run(() => generateDeck({
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
       session_id: sessionId, approved_plan: approvedPlan, slide_count: fullCount,
+      file_ids: fileIds,
     }));
   };
 
   const buildDirect = () => {
     if (!canGo) return;
+    // Direct build has no human-approved plan; per-slide edit becomes available
+    // once the outline echoes its plan (it is carried on the job result too).
+    setBuiltPlan((job.result?.plan as Record<string, unknown>) ?? null);
     job.run(() => generateDeck({
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-      session_id: sessionId, slide_count: fullCount,
+      session_id: sessionId, slide_count: fullCount, file_ids: fileIds,
     }));
   };
+
+  // ── Iterative in-place editing: regenerate ONE slide from a prompt ──
+  const editSlide = async (slideIndex: number, instruction: string) => {
+    const plan = builtPlan ?? (job.result?.plan as Record<string, unknown> | undefined);
+    if (!plan) {
+      setEditError('Slide editing needs the deck plan; rebuild from an outline to edit slides.');
+      return;
+    }
+    if (!job.jobId) {
+      setEditError('Slide editing is available once the deck has finished building.');
+      return;
+    }
+    setEditBusy(slideIndex); setEditError(null);
+    try {
+      // Backend re-authors the one slide, re-renders the deck in place (splicing
+      // into the saved doc so other slides don't drift), and returns a fresh
+      // result + updated plan. We hold it as a local override so the panel + its
+      // thumbnails refresh in place.
+      const updated = await editDeckSlide({
+        job_id: job.jobId, request: buildRequest(), approved_plan: plan, slide_index: slideIndex,
+        edit_instruction: instruction, deliverable_type: enumType,
+        client_slug: clientSlug, session_id: sessionId, file_ids: fileIds,
+      });
+      if (updated.plan) setBuiltPlan(updated.plan as Record<string, unknown>);
+      setEditedResult(updated);
+    } catch (e: any) {
+      setEditError(e?.message || 'Could not regenerate that slide.');
+    } finally {
+      setEditBusy(null);
+    }
+  };
+  const slideEdit: SlideEdit = { onEdit: editSlide, busyIndex: editBusy, error: editError };
 
   // ── Build / result panel (two-panel shell) — from either the outline or one-shot ──
   if (jobActive) {
@@ -120,8 +174,8 @@ export default function DeckSurface({
         <div className="flex flex-col px-6 pt-3 pb-6 md:px-7 md:pb-7 justify-center">
           {job.phase === 'error' ? (
             <ErrorPanel message={job.error || 'Generation failed.'} onRetry={() => job.reset()} />
-          ) : job.phase === 'complete' && job.result ? (
-            <ResultPanel result={job.result} kindLabel="Deck" onReset={resetAll} />
+          ) : job.phase === 'complete' && (editedResult ?? job.result) ? (
+            <ResultPanel result={(editedResult ?? job.result)!} kindLabel="Deck" onReset={resetAll} slideEdit={slideEdit} />
           ) : job.phase === 'pending' ? (
             <PendingBuildNote />
           ) : (
@@ -190,6 +244,11 @@ export default function DeckSurface({
           <p className="text-caption text-text-muted mb-2 leading-relaxed">Name the audience, the angle, and which past work to draw on.</p>
           <textarea id="deck-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} placeholder={activeType.example}
             className={`w-full resize-y max-h-[40vh] rounded-surface border border-border bg-bg-secondary px-3.5 py-3 text-[14px] text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+          {/* Same voice + optimize controls as the main composer (reused). */}
+          <div className="mt-2 flex justify-end">
+            <ComposerTools value={brief} onChange={setBrief}
+              onFocusRestore={() => document.getElementById('deck-brief')?.focus()} />
+          </div>
         </div>
 
         {outlinePhase === 'error' && <p className="mt-3 text-caption text-error leading-relaxed">{outlineError}</p>}
@@ -222,7 +281,10 @@ export default function DeckSurface({
     </Shell>
   );
 
-  function resetAll() { setOutline(null); setOutlinePhase('idle'); setOutlineError(''); job.reset(); }
+  function resetAll() {
+    setOutline(null); setOutlinePhase('idle'); setOutlineError('');
+    setBuiltPlan(null); setEditBusy(null); setEditError(null); setEditedResult(null); job.reset();
+  }
 }
 
 // Shared two-panel shell (back button + left rail identity + right-rail children).
