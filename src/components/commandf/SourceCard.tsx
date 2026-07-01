@@ -13,7 +13,7 @@ const REUSE_ACTIONS = [
 ];
 
 /** Quiet reuse menu — muted "⋯" trigger that opens the three next-move actions. */
-function ReuseMenu({ source, onReuse }: { source: Source; onReuse: (prompt: string) => void }) {
+function ReuseMenu({ source, onReuse, flipUp }: { source: Source; onReuse: (prompt: string) => void; flipUp?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -42,7 +42,7 @@ function ReuseMenu({ source, onReuse }: { source: Source; onReuse: (prompt: stri
       {open && (
         <div
           role="menu"
-          className="absolute top-full right-0 mt-1.5 min-w-[12rem] rounded-surface border border-border-light bg-bg-elevated shadow-float overflow-hidden animate-slide-up p-1 z-20"
+          className={`absolute right-0 min-w-[12rem] rounded-surface border border-border-light bg-bg-elevated shadow-float overflow-hidden animate-slide-up p-1 z-20 ${flipUp ? 'bottom-full mb-1.5' : 'top-full mt-1.5'}`}
         >
           {REUSE_ACTIONS.map(({ key, label, Icon }) => (
             <button
@@ -69,7 +69,7 @@ function ReuseMenu({ source, onReuse }: { source: Source; onReuse: (prompt: stri
  * affordance expands to list the rest. A muted reuse menu turns the citation into
  * a next move. Sits inside the divided SourceList container.
  */
-export function SourceCard({ group, onReuse, highlighted }: { group: GroupedSource; onReuse?: (prompt: string) => void; highlighted?: boolean }) {
+export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group: GroupedSource; onReuse?: (prompt: string) => void; highlighted?: boolean; flipMenuUp?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const best = group.passages[0] ?? ({ file_name: group.file_name } as Source);
   const parsed = parseDeliverableName(group.file_name);
@@ -130,7 +130,7 @@ export function SourceCard({ group, onReuse, highlighted }: { group: GroupedSour
 
         {band && <span className="shrink-0 text-micro text-text-muted">{band} relevance</span>}
 
-        {onReuse && <ReuseMenu source={best} onReuse={onReuse} />}
+        {onReuse && <ReuseMenu source={best} onReuse={onReuse} flipUp={flipMenuUp} />}
 
         {hasLink && (
           <a
@@ -194,13 +194,17 @@ export function SourceList({
           {groups.length === 1 ? 'document from the firm’s work' : 'documents from the firm’s work'}
         </span>
       </p>
-      <div className="rounded-surface border border-border-light bg-bg-elevated divide-y divide-hairline overflow-hidden">
-        {groups.map((g) => (
+      {/* No `overflow-hidden` here: it clipped the LAST source's reuse menu
+          (it opens downward past the container edge). Corners are instead rounded
+          on the first/last row so the box still reads as one clean card. */}
+      <div className="rounded-surface border border-border-light bg-bg-elevated divide-y divide-hairline [&>*:first-child]:rounded-t-surface [&>*:last-child]:rounded-b-surface">
+        {groups.map((g, i) => (
           <SourceCard
             key={g.key}
             group={g}
             onReuse={onReuse}
             highlighted={typeof highlightN === 'number' && g.n === highlightN}
+            flipMenuUp={groups.length > 2 && i >= groups.length - 2}
           />
         ))}
       </div>
