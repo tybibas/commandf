@@ -57,3 +57,21 @@ the real surfaces with fixtures and no network/credentials:
 
 Every surface was screenshotted in both themes and compared to the references; `npx tsc --noEmit`
 and `npm run build` are clean.
+
+---
+
+## IA rethink v2 — left rail + composer command-center
+
+Restructured the information architecture (not a recolor). Where things live now:
+- **New chat / Recent history / account** → persistent **left sidebar** (collapsible 264↔56px).
+  *ChatGPT + Claude + Perplexity + Harvey rails.*
+- **Model selector** → **inline in the composer** control row. *Claude "Opus 4.8" + Perplexity "Model".*
+- **Attachments / Build-a-deck / Survey** → behind the composer **"+"** menu. *ChatGPT "+" + Harvey Files.*
+- **Knowledge base** → sidebar nav item + a **Knowledge scope chip** inside the composer. *Harvey Sources/Vault.*
+- **Top header** → removed; canvas is a calm centered hero: workspace chip + time-aware **serif greeting**
+  ("Good evening") + quick-action chips. *Claude "Evening, Ty".*
+
+New surface: `src/components/commandf/Sidebar.tsx`. Rebuilt: `Composer.tsx` (command card + inline
+model popover), `Landing.tsx` (Claude hero), `CommandFPage.tsx` (rail layout, "+" menu, control
+relocation). All functionality preserved (send, sessions, model, knowledge upload/reindex/drive,
+deck/survey, sign-out). tsc + build clean; render-verified in both themes.
