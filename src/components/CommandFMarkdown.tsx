@@ -1,6 +1,69 @@
+import { Children } from 'react';
+import type { ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
+
+type CiteProps = {
+  /** Opt-in: when provided, inline `[n]` markers that map to a source become
+   *  clickable citation chips. Omit it and the markdown renders untouched. */
+  onCiteClick?: (n: number) => void;
+  /** The set of citation numbers that actually map to a source card. Only these
+   *  become chips; any other bracketed number stays literal text. */
+  citable?: Set<number>;
+};
+
+/** Split a text node on `[n]` markers, turning citable numbers into chips and
+ *  leaving every other bracket (and all non-citable numbers) as plain text. */
+function withCitations(node: ReactNode, cite: CiteProps): ReactNode {
+  const { onCiteClick, citable } = cite;
+  if (!onCiteClick) return node;
+
+  if (typeof node === 'string') {
+    const parts = node.split(/(\[\d+\])/g);
+    if (parts.length === 1) return node;
+    return parts.map((part, i) => {
+      const m = part.match(/^\[(\d+)\]$/);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (!citable || citable.has(n)) {
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onCiteClick(n)}
+              aria-label={`Jump to source ${n}`}
+              className="align-super mx-px inline-flex items-baseline font-num text-micro font-medium leading-none text-brand rounded-sm px-0.5 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand transition-colors"
+              style={{ transitionDuration: 'var(--motion-duration-fast)' }}
+            >
+              {n}
+            </button>
+          );
+        }
+      }
+      return part;
+    });
+  }
+
+  if (Array.isArray(node)) return node.map((c, i) => <span key={i}>{withCitations(c, cite)}</span>);
+  return node;
+}
+
+function makeComponents(cite: CiteProps): Components {
+  return {
+    ...components,
+    p: ({ children }) => (
+      <p className="text-body leading-relaxed text-text-primary mb-3.5 last:mb-0">
+        {Children.map(children, (c) => withCitations(c, cite))}
+      </p>
+    ),
+    li: ({ children }) => (
+      <li className="text-body leading-relaxed text-text-primary pl-0.5">
+        {Children.map(children, (c) => withCitations(c, cite))}
+      </li>
+    ),
+  };
+}
 
 const components: Components = {
   h1: ({ children }) => (
@@ -50,7 +113,7 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="text-text-primary underline underline-offset-2 decoration-text-muted hover:decoration-text-primary transition-colors"
+      className="text-brand hover:text-brand-hover underline underline-offset-2 decoration-brand/40 hover:decoration-brand transition-colors"
       style={{ transitionDuration: 'var(--motion-duration-fast)' }}
     >
       {children}
@@ -128,10 +191,17 @@ const components: Components = {
   ),
 };
 
-export default function CommandFMarkdown({ content }: { content: string }) {
+export default function CommandFMarkdown({
+  content,
+  onCiteClick,
+  citable,
+}: { content: string } & CiteProps) {
+  // Citation interactivity is opt-in: without onCiteClick the base renderers are
+  // used and every `[n]` stays literal, so other callers are unaffected.
+  const activeComponents = onCiteClick ? makeComponents({ onCiteClick, citable }) : components;
   return (
     <div className="min-w-0">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={activeComponents}>
         {content}
       </ReactMarkdown>
     </div>

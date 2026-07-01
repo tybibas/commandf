@@ -18,12 +18,14 @@ interface SidebarProps {
   onOpenKnowledge: () => void;
   docCount: number;
   contextLabel: string;
+  /** Workspace logo (e.g. the Actionist wordmark) shown in the footer. */
+  logoSrc?: string;
   account?: React.ReactNode;
 }
 
 export default function Sidebar({
   collapsed, onToggle, onNewChat, sessions, activeSessionId,
-  onOpenSession, onDeleteSession, onOpenKnowledge, docCount, contextLabel, account,
+  onOpenSession, onDeleteSession, onOpenKnowledge, docCount, contextLabel, logoSrc, account,
 }: SidebarProps) {
   return (
     <aside
@@ -100,6 +102,9 @@ export default function Sidebar({
               const active = s.id === activeSessionId;
               return (
                 <div key={s.id} className="group/row relative">
+                  {active && !collapsed && (
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-brand" aria-hidden />
+                  )}
                   <button
                     type="button"
                     onClick={() => onOpenSession(s.id)}
@@ -107,7 +112,7 @@ export default function Sidebar({
                     title={collapsed ? s.title : undefined}
                     className={`w-full flex items-center rounded-control transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2.5 pl-3 pr-8 h-11 text-left'} ${active ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}
                   >
-                    <MessageSquare className="w-4 h-4 shrink-0" strokeWidth={1.5} aria-hidden />
+                    <MessageSquare className={`w-4 h-4 shrink-0 ${active ? 'text-brand' : ''}`} strokeWidth={1.5} aria-hidden />
                     {!collapsed && (
                       <span className="flex-1 min-w-0 flex flex-col leading-tight">
                         <span className="truncate text-body">{s.title || 'Untitled'}</span>
@@ -132,10 +137,12 @@ export default function Sidebar({
         </nav>
       </div>
 
-      {/* ── Footer: context + account (pinned) ─────────────────────────── */}
-      <div className={`shrink-0 hairline-t ${collapsed ? 'px-2 py-2' : 'px-4 py-3'} space-y-2`}>
-        {!collapsed && contextLabel && (
-          <p className="text-caption text-text-muted truncate" title={contextLabel}>{contextLabel}</p>
+      {/* ── Footer: workspace identity + account (pinned) ──────────────── */}
+      <div className={`shrink-0 hairline-t ${collapsed ? 'px-2 py-2' : 'px-4 py-3'} space-y-2.5`}>
+        {!collapsed && (
+          logoSrc
+            ? <img src={logoSrc} alt={contextLabel} title={contextLabel} className="brand-logo h-4 w-auto opacity-90 select-none" />
+            : (contextLabel && <p className="text-caption text-text-muted truncate" title={contextLabel}>{contextLabel}</p>)
         )}
         {account}
       </div>

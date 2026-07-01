@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Plus, Database, Upload, Presentation, Table2, PenLine, Search, GitCompare,
+  Plus, Database, Upload, Presentation, Table2, PenLine, Search, GitCompare, MessageSquare,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { useClientStrategy } from '../contexts/ClientStrategyContext';
@@ -19,6 +19,7 @@ import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
 import SurveySurface from './commandf/SurveySurface';
 import KnowledgePanel from './commandf/KnowledgePanel';
+import CommandPalette, { type PaletteCommand } from './commandf/CommandPalette';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
@@ -56,6 +57,8 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
   const [showKnowledge, setShowKnowledge] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const [showPlus, setShowPlus] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+  const [deckSeed, setDeckSeed] = useState('');
   const [surface, setSurface] = useState<Surface>('home');
   const [focusKey, setFocusKey] = useState(0);
 
@@ -138,6 +141,18 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     window.addEventListener('keydown', onEsc);
     return () => window.removeEventListener('keydown', onEsc);
   }, [showPlus]);
+
+  // ⌘K / Ctrl+K opens the command palette (jump to a thread, new chat, tools).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   const openSession = async (sid: string) => {
     setSessionId(sid); setSurface('chat');
@@ -233,6 +248,14 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     setFocusKey((k) => k + 1);
   }, []);
 
+  // Source → deck handoff: open the deck surface seeded with the question that
+  // produced these sources, so "build a deck from these" starts grounded.
+  const buildDeckFromChat = useCallback(() => {
+    const lastUser = [...messages].reverse().find((m) => m.role === 'user');
+    setDeckSeed(lastUser?.content ?? '');
+    setSurface('deck');
+  }, [messages]);
+
   if (notConfigured) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
@@ -249,6 +272,19 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
 
   const docs = briefing?.knowledge?.doc_count ?? 0;
   const lastSync = briefing?.knowledge?.last_sync_at;
+
+  const logoSrc = isActionist ? '/actionist-logo.png' : undefined;
+
+  const paletteCommands: PaletteCommand[] = [
+    { id: 'new', label: 'New chat', group: 'Actions', icon: Plus, keywords: 'start reset thread', run: newChat },
+    { id: 'knowledge', label: 'Open knowledge base', group: 'Actions', icon: Database, hint: docs ? docs.toLocaleString() : undefined, keywords: 'documents sources upload drive', run: () => setShowKnowledge(true) },
+    { id: 'deck', label: 'Build a deck', group: 'Actions', icon: Presentation, hint: 'PPTX', keywords: 'presentation slides pptx', run: () => setSurface('deck') },
+    { id: 'survey', label: 'Survey compendium', group: 'Actions', icon: Table2, hint: 'XLSX', keywords: 'spreadsheet xlsx', run: () => setSurface('survey') },
+    ...sessions.slice(0, 8).map((s): PaletteCommand => ({
+      id: `s-${s.id}`, label: s.title || 'Untitled', group: 'Recent', icon: MessageSquare,
+      hint: timeAgo(s.updated_at), run: () => openSession(s.id),
+    })),
+  ];
 
   const quickActions: QuickAction[] = [
     { label: 'Draft in our voice', icon: PenLine, onClick: () => selectPrompt(PROMPT_VOICE) },
@@ -339,17 +375,18 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
         onOpenKnowledge={() => setShowKnowledge(true)}
         docCount={docs}
         contextLabel={contextLabel}
+        logoSrc={logoSrc}
         account={headerExtra}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
         {surface === 'deck' ? (
-          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} />
+          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (
           <>
-            <Conversation messages={messages} sending={sending} onReuse={prefillComposer} />
+            <Conversation messages={messages} sending={sending} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>
             </div>
@@ -359,6 +396,7 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
             loading={loading}
             greeting={greetingForNow()}
             contextLabel={contextLabel}
+            logoSrc={logoSrc}
             composer={composer}
             quickActions={quickActions}
             docCount={docs}
@@ -375,6 +413,12 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
         syncing={syncing}
         onConnectDrive={onConnectDrive}
         onReindex={runSync}
+      />
+
+      <CommandPalette
+        open={showPalette}
+        onClose={() => setShowPalette(false)}
+        commands={paletteCommands}
       />
     </div>
   );

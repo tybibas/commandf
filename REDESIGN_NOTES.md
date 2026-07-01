@@ -114,3 +114,21 @@ Source intelligence (`SourceCard.tsx`, `util.ts`, wired via `Conversation.tsx`/`
 
 Deck generation (`DeckSurface.tsx`, `generationUI.tsx`):
 - Refined flow (eyebrow labels, roomier brief), the deliverable types as one **segmented control**, live backend `progress` piped into RunningPanel (authoritative when present, canned phases as fallback), a stronger result state (full-width **Download .pptx** primary + slide-thumbnail rail), and an honest, premium **pending/preview** state for the not-yet-live endpoint.
+
+---
+
+## Frontier iteration 2 — brand, interactive citations, ⌘K, source→deck
+
+- **Actionist brand:** added a tunable clay-orange accent token (`--color-brand`, light+dark) used
+  sparingly (citation numerals, active-thread marker, links, highlight) — Claude-orange restraint,
+  primary actions stay ink. The Actionist wordmark (`public/actionist-logo.png`) anchors the
+  workspace identity (landing chip + sidebar footer), auto-inverted on the dark tenant. Shows only
+  in the Actionist context; operator context keeps a quiet chip.
+- **Interactive citations:** `[n]` in answers render as orange citation chips; clicking scrolls to
+  and pulses the matching source card (brand ring). Opt-in, so other markdown callers are unaffected.
+- **Command palette (⌘K):** new `CommandPalette.tsx` — new chat / knowledge / deck / survey +
+  jump-to-recent-thread; keyboard-first, brand-highlighted.
+- **Source→deck handoff:** "Build a deck from these sources" under an answer opens the deck surface
+  seeded with the originating question.
+- Backend follow-ups captured in `docs/BACKEND_TODOS.md` (incl. cross-engagement `synthesis` field,
+  which needs the backend LLM — spec'd, not faked).

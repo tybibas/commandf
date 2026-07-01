@@ -17,6 +17,8 @@ interface LandingProps {
   greeting: string;
   /** Workspace/context label, e.g. "Actionist Consulting". */
   contextLabel: string;
+  /** Workspace logo (Actionist wordmark) — shown in the chip when provided. */
+  logoSrc?: string;
   composer: React.ReactNode;
   quickActions: QuickAction[];
   docCount: number;
@@ -29,17 +31,22 @@ interface LandingProps {
  * chips. No boxes, no clutter — the input is the only elevated object.
  */
 export default function Landing({
-  loading, greeting, contextLabel, composer, quickActions, docCount, lastSync,
+  loading, greeting, contextLabel, logoSrc, composer, quickActions, docCount, lastSync,
 }: LandingProps) {
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin">
       <div className="min-h-full flex flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl">
-          {/* Workspace chip — distilled from Claude's org chip above the greeting */}
-          {contextLabel && (
+          {/* Workspace identity — the tenant's logo when we have one, else a quiet
+              chip. Distilled from Claude's org chip above the greeting. */}
+          {logoSrc ? (
+            <div className="flex justify-center mb-6 animate-fade-in">
+              <img src={logoSrc} alt={contextLabel} className="brand-logo h-5 w-auto opacity-90 select-none" />
+            </div>
+          ) : contextLabel && (
             <div className="flex justify-center mb-5 animate-fade-in">
               <span className="inline-flex items-center gap-1.5 rounded-pill bg-bg-secondary border border-border-light px-2.5 py-1 text-caption text-text-secondary">
-                <Sparkles className="w-3 h-3 text-text-muted" strokeWidth={1.75} aria-hidden />
+                <Sparkles className="w-3 h-3 text-brand/80" strokeWidth={1.75} aria-hidden />
                 {contextLabel}
               </span>
             </div>

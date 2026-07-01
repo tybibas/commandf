@@ -22,6 +22,14 @@
   --color-accent-pressed: #100E0C;
   --color-accent-muted: rgba(42, 39, 36, 0.07);
 
+  /* Brand accent — Actionist clay-orange. Used SPARINGLY (workspace identity,
+     active-nav marker, links, citation highlight) the way Claude uses its clay
+     or Perplexity its ink. Primary actions stay neutral ink; this is a seasoning,
+     not a fill. Tunable: swap these three to re-brand for another tenant. */
+  --color-brand: #C15C2E;
+  --color-brand-hover: #A54D22;
+  --color-brand-soft: rgba(193, 92, 46, 0.10);
+
   /* Text — warm near-black ink over the cream, not cool gray */
   --color-text-primary: #26231F;
   --color-text-secondary: #5C574F;
@@ -113,6 +121,11 @@
   --color-accent-pressed: #D1D5DB;
   --color-accent-muted: rgba(229, 231, 235, 0.12);
 
+  /* Brand accent — Actionist clay-orange, lifted for contrast on charcoal */
+  --color-brand: #E38A56;
+  --color-brand-hover: #EDA074;
+  --color-brand-soft: rgba(227, 138, 86, 0.15);
+
   /* Light Text for Dark Mode */
   --color-text-primary: #E5E7EB;
   --color-text-secondary: #9CA3AF;
@@ -197,6 +210,12 @@
 :focus-visible {
   outline: 2px solid var(--color-focus-ring);
   outline-offset: 2px;
+}
+
+/* Workspace logo — the Actionist wordmark ships as dark ink (reads on the warm
+   canvas). On the dark tenant theme, invert it to light so it stays legible. */
+.theme-quantifire .brand-logo {
+  filter: invert(1) brightness(1.9) contrast(0.9);
 }
 
 /* Primary button pressed state */

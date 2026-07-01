@@ -47,6 +47,9 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
 
 // ── Theme + view routing ─────────────────────────────────────────────────────
 const params = new URLSearchParams(window.location.search);
+// Dev harness: default to the Actionist tenant so brand/logo render (override
+// with ?ctx=operator). Real app resolves this from the signed-in operator.
+try { localStorage.setItem('qf_active_context', params.get('ctx') || 'actionist'); } catch { /* ignore */ }
 if (params.get('theme') === 'dark') document.documentElement.classList.add('theme-quantifire');
 const view = params.get('view') || 'app';
 

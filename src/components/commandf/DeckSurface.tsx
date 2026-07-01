@@ -26,9 +26,9 @@ const DECK_PHASES = [
 ];
 
 export default function DeckSurface({
-  onBack, clientSlug, sessionId,
-}: { onBack: () => void; clientSlug?: string; sessionId?: string | null }) {
-  const [brief, setBrief] = useState('');
+  onBack, clientSlug, sessionId, initialBrief,
+}: { onBack: () => void; clientSlug?: string; sessionId?: string | null; initialBrief?: string }) {
+  const [brief, setBrief] = useState(initialBrief ?? '');
   const [type, setType] = useState('');
   const job = useJob(generateDeckStatus);
   const busy = job.phase === 'starting' || job.phase === 'running';

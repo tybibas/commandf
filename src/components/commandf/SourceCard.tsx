@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, ArrowUpRight, ChevronRight, MoreHorizontal, LayoutTemplate, PenLine, GitCompare } from 'lucide-react';
+import { FileText, ArrowUpRight, ChevronRight, MoreHorizontal, LayoutTemplate, PenLine, GitCompare, Presentation } from 'lucide-react';
 import type { Source } from './api';
 import { parseDeliverableName, confidenceBand, groupSources, reusePrompt, type GroupedSource } from './util';
 
@@ -69,7 +69,7 @@ function ReuseMenu({ source, onReuse }: { source: Source; onReuse: (prompt: stri
  * affordance expands to list the rest. A muted reuse menu turns the citation into
  * a next move. Sits inside the divided SourceList container.
  */
-export function SourceCard({ group, onReuse }: { group: GroupedSource; onReuse?: (prompt: string) => void }) {
+export function SourceCard({ group, onReuse, highlighted }: { group: GroupedSource; onReuse?: (prompt: string) => void; highlighted?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const best = group.passages[0] ?? ({ file_name: group.file_name } as Source);
   const parsed = parseDeliverableName(group.file_name);
@@ -82,7 +82,11 @@ export function SourceCard({ group, onReuse }: { group: GroupedSource; onReuse?:
     .filter(Boolean) as string[];
 
   return (
-    <div className="group relative px-3.5 py-2.5">
+    <div
+      data-cite={group.n ?? undefined}
+      className={`group relative px-3.5 py-2.5 transition-all cite-target ${highlighted ? 'is-cited bg-brand-soft ring-1 ring-inset ring-brand' : ''}`}
+      style={{ transitionDuration: 'var(--motion-duration-slow)' }}
+    >
       <div className="flex items-center gap-3">
         {/* Citation index badge */}
         <span className="shrink-0 inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-control border border-border-light bg-bg-elevated font-num text-micro font-medium text-text-secondary tabular-nums group-hover:border-border-hover transition-colors">
@@ -167,7 +171,17 @@ export function SourceCard({ group, onReuse }: { group: GroupedSource; onReuse?:
 }
 
 /** The "Sources" block rendered beneath an assistant answer. */
-export function SourceList({ sources, onReuse }: { sources: Source[]; onReuse?: (prompt: string) => void }) {
+export function SourceList({
+  sources,
+  onReuse,
+  onBuildDeck,
+  highlightN,
+}: {
+  sources: Source[];
+  onReuse?: (prompt: string) => void;
+  onBuildDeck?: () => void;
+  highlightN?: number | null;
+}) {
   const groups = groupSources(sources);
   if (groups.length === 0) return null;
 
@@ -182,9 +196,27 @@ export function SourceList({ sources, onReuse }: { sources: Source[]; onReuse?: 
       </p>
       <div className="rounded-surface border border-border-light bg-bg-elevated divide-y divide-hairline overflow-hidden">
         {groups.map((g) => (
-          <SourceCard key={g.key} group={g} onReuse={onReuse} />
+          <SourceCard
+            key={g.key}
+            group={g}
+            onReuse={onReuse}
+            highlighted={typeof highlightN === 'number' && g.n === highlightN}
+          />
         ))}
       </div>
+
+      {onBuildDeck && (
+        <div className="mt-2.5 flex justify-end">
+          <button
+            type="button"
+            onClick={onBuildDeck}
+            className={`inline-flex items-center gap-1.5 rounded-control px-1.5 py-1 text-caption text-text-muted hover:text-text-secondary transition-colors ${MOTION} ${FOCUS}`}
+          >
+            <Presentation className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
+            <span>Build a deck from these sources</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
