@@ -5,8 +5,7 @@ import type { Components } from 'react-markdown';
 const components: Components = {
   h1: ({ children }) => (
     <h1
-      style={{ fontFamily: "'Outfit', sans-serif" }}
-      className="text-xl font-bold tracking-tight text-text-primary mt-5 mb-2 leading-tight"
+      className="font-serif text-2xl font-normal tracking-tight text-text-primary mt-6 mb-2.5 first:mt-0 leading-tight"
     >
       {children}
     </h1>
@@ -14,16 +13,16 @@ const components: Components = {
   h2: ({ children }) => (
     <h2
       style={{ fontFamily: "'Outfit', sans-serif" }}
-      className="text-base font-semibold tracking-tight text-text-primary mt-4 mb-1.5 leading-snug"
+      className="text-base font-semibold tracking-tight text-text-primary mt-5 mb-1.5 first:mt-0 leading-snug"
     >
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="eyebrow text-text-muted mt-4 mb-1.5">{children}</h3>
+    <h3 className="eyebrow text-text-muted mt-5 mb-1.5 first:mt-0">{children}</h3>
   ),
   p: ({ children }) => (
-    <p className="text-body leading-relaxed text-text-primary mb-3 last:mb-0">
+    <p className="text-body leading-relaxed text-text-primary mb-3.5 last:mb-0">
       {children}
     </p>
   ),
@@ -34,17 +33,17 @@ const components: Components = {
     <em className="italic text-text-secondary">{children}</em>
   ),
   ul: ({ children }) => (
-    <ul className="list-disc pl-5 mb-3 space-y-1 text-body text-text-primary">
+    <ul className="list-disc pl-5 mb-3.5 space-y-1.5 text-body text-text-primary marker:text-text-muted">
       {children}
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal pl-5 mb-3 space-y-1 text-body text-text-primary">
+    <ol className="list-decimal pl-5 mb-3.5 space-y-1.5 text-body text-text-primary marker:text-text-muted marker:font-num">
       {children}
     </ol>
   ),
   li: ({ children }) => (
-    <li className="text-body leading-relaxed text-text-primary">{children}</li>
+    <li className="text-body leading-relaxed text-text-primary pl-0.5">{children}</li>
   ),
   a: ({ href, children }) => (
     <a
@@ -93,8 +92,8 @@ const components: Components = {
   ),
   blockquote: ({ children }) => (
     <blockquote
-      className="pl-3 my-3 italic text-body text-text-secondary"
-      style={{ borderLeft: '2px solid var(--color-hairline)' }}
+      className="pl-4 my-4 font-serif text-base italic text-text-secondary leading-relaxed"
+      style={{ borderLeft: '2px solid var(--color-border)' }}
     >
       {children}
     </blockquote>

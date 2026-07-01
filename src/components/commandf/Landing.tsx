@@ -33,10 +33,10 @@ function ModeChip({
       type="button"
       onClick={onClick}
       className={[
-        'group inline-flex items-center gap-1.5 rounded-full border border-border-light bg-bg-secondary/50',
-        'px-3 py-1.5 text-caption text-text-secondary',
-        'hover:text-text-primary hover:border-border-hover hover:bg-bg-secondary transition-colors',
-        MOTION, FOCUS,
+        'group inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-elevated',
+        'px-3.5 py-1.5 text-caption text-text-secondary shadow-float',
+        'hover:text-text-primary hover:border-border-hover hover:-translate-y-px hover:shadow-float-hover',
+        'transition-all', MOTION, FOCUS,
       ].join(' ')}
     >
       <Icon className="w-3.5 h-3.5 text-text-muted group-hover:text-text-secondary transition-colors" strokeWidth={1.75} aria-hidden />
@@ -56,9 +56,10 @@ export default function Landing({
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin">
       <div className="min-h-full flex flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl">
-          {/* Quiet greeting — small and sans, not a marketing hero */}
-          <div className="text-center mb-6 animate-fade-in">
-            <h1 className="text-xl sm:text-2xl font-medium tracking-tight text-text-primary text-balance">
+          {/* Warm editorial greeting — the single "premium, not another chatbot" signal.
+              Serif (Newsreader), normal weight, tight tracking, warm ink. */}
+          <div className="text-center mb-7 animate-fade-in">
+            <h1 className="font-serif text-2xl sm:text-3xl font-normal tracking-tight text-text-primary text-balance leading-tight">
               What can the firm&#39;s memory tell you?
             </h1>
           </div>
@@ -77,15 +78,19 @@ export default function Landing({
 
           {/* Example prompts — quiet, clickable rows */}
           {suggestions.length > 0 && (
-            <div className="mt-9 animate-fade-in" style={{ animationDelay: '120ms' }}>
-              <div className="rounded-surface border border-border-light overflow-hidden divide-y divide-border-light">
-                {suggestions.slice(0, 4).map((q) => (
+            <div className="mt-10 animate-fade-in" style={{ animationDelay: '120ms' }}>
+              <p className="eyebrow text-text-muted mb-2.5 px-0.5">Start here</p>
+              <div className="overflow-hidden divide-y divide-hairline hairline-t hairline-b">
+                {suggestions.slice(0, 4).map((q, i) => (
                   <button
                     key={q}
                     type="button"
                     onClick={() => onSelectPrompt(q)}
-                    className={`group w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-bg-secondary/60 transition-colors ${MOTION} ${FOCUS}`}
+                    className={`group w-full flex items-start gap-3 px-1 py-3 text-left hover:px-3 hover:bg-bg-secondary/50 rounded-control transition-all ${MOTION} ${FOCUS}`}
                   >
+                    <span className="font-num text-caption text-text-muted/70 tabular-nums mt-0.5 shrink-0 w-4 text-right group-hover:text-text-secondary transition-colors">
+                      {i + 1}
+                    </span>
                     <span className="flex-1 min-w-0 text-body text-text-secondary group-hover:text-text-primary leading-snug transition-colors">
                       {q}
                     </span>
