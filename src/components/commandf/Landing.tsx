@@ -28,20 +28,21 @@ function ModeChip({
 }: {
   icon: typeof Search; label: string; chip?: string; onClick: () => void;
 }) {
+  // Flat, quiet secondary action — no fill, no shadow, no lift. The composer is
+  // the only elevated object on the canvas; these sit under it as calm text.
   return (
     <button
       type="button"
       onClick={onClick}
       className={[
-        'group inline-flex items-center gap-1.5 rounded-full border border-border-light bg-bg-secondary/50',
-        'px-3 py-1.5 text-caption text-text-secondary',
-        'hover:text-text-primary hover:border-border-hover hover:bg-bg-secondary transition-colors',
+        'group inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1.5',
+        'text-caption text-text-muted hover:text-text-primary transition-colors',
         MOTION, FOCUS,
       ].join(' ')}
     >
-      <Icon className="w-3.5 h-3.5 text-text-muted group-hover:text-text-secondary transition-colors" strokeWidth={1.75} aria-hidden />
+      <Icon className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" strokeWidth={1.75} aria-hidden />
       <span>{label}</span>
-      {chip && <span className="font-mono text-micro text-text-muted">{chip}</span>}
+      {chip && <span className="font-mono text-micro opacity-60">{chip}</span>}
     </button>
   );
 }
@@ -56,9 +57,10 @@ export default function Landing({
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin">
       <div className="min-h-full flex flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl">
-          {/* Quiet greeting — small and sans, not a marketing hero */}
-          <div className="text-center mb-6 animate-fade-in">
-            <h1 className="text-xl sm:text-2xl font-medium tracking-tight text-text-primary text-balance">
+          {/* Warm editorial greeting — the single "premium, not another chatbot" signal.
+              Serif (Newsreader), normal weight, tight tracking, warm ink. */}
+          <div className="text-center mb-7 animate-fade-in">
+            <h1 className="font-serif text-2xl sm:text-3xl font-normal tracking-tight text-text-primary text-balance leading-tight">
               What can the firm&#39;s memory tell you?
             </h1>
           </div>
@@ -68,37 +70,36 @@ export default function Landing({
             {composer}
           </div>
 
-          {/* Tool chips, directly under the input */}
-          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2 animate-fade-in" style={{ animationDelay: '60ms' }}>
-            <ModeChip icon={Search} label="Ask the memory" onClick={() => onMode('ask')} />
+          {/* Two quiet secondary modes, directly under the input — flat text, no boxes */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1 animate-fade-in" style={{ animationDelay: '60ms' }}>
             <ModeChip icon={Presentation} label="Build a deck" chip="PPTX" onClick={() => onMode('deck')} />
+            <span className="text-text-muted/40 select-none" aria-hidden>·</span>
             <ModeChip icon={Table2} label="Survey deck" chip="XLSX" onClick={() => onMode('survey')} />
           </div>
 
-          {/* Example prompts — quiet, clickable rows */}
+          {/* Example prompts — borderless, near-invisible until read. No box, no
+              eyebrow, no numerals: the calm empty-state of Claude / ChatGPT. */}
           {suggestions.length > 0 && (
-            <div className="mt-9 animate-fade-in" style={{ animationDelay: '120ms' }}>
-              <div className="rounded-surface border border-border-light overflow-hidden divide-y divide-border-light">
-                {suggestions.slice(0, 4).map((q) => (
-                  <button
-                    key={q}
-                    type="button"
-                    onClick={() => onSelectPrompt(q)}
-                    className={`group w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-bg-secondary/60 transition-colors ${MOTION} ${FOCUS}`}
-                  >
-                    <span className="flex-1 min-w-0 text-body text-text-secondary group-hover:text-text-primary leading-snug transition-colors">
-                      {q}
-                    </span>
-                    <ArrowUpRight className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/0 group-hover:text-text-muted transition-colors" strokeWidth={1.5} aria-hidden />
-                  </button>
-                ))}
-              </div>
+            <div className="mt-12 flex flex-col animate-fade-in" style={{ animationDelay: '120ms' }}>
+              {suggestions.slice(0, 3).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => onSelectPrompt(q)}
+                  className={`group w-full flex items-center gap-2.5 py-2.5 text-left transition-colors ${MOTION} ${FOCUS}`}
+                >
+                  <span className="flex-1 min-w-0 text-body text-text-muted group-hover:text-text-primary leading-snug transition-colors">
+                    {q}
+                  </span>
+                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0 text-text-muted/0 group-hover:text-text-muted/70 transition-colors" strokeWidth={1.5} aria-hidden />
+                </button>
+              ))}
             </div>
           )}
 
           {/* Knowledge footnote — tiny, unobtrusive */}
           {!loading && (
-            <p className="mt-8 text-center text-caption text-text-muted animate-fade-in" style={{ animationDelay: '160ms' }}>
+            <p className="mt-10 text-center text-caption text-text-muted/80 animate-fade-in" style={{ animationDelay: '160ms' }}>
               {docs.toLocaleString()} document{docs === 1 ? '' : 's'} indexed
               {lastSync && <> · synced {timeAgo(lastSync)}</>}
             </p>

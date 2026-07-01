@@ -62,7 +62,7 @@ export default function Composer({
 
   return (
     <div
-      className="relative rounded-pill bg-bg-secondary px-5 py-3 border border-transparent shadow-float transition-all duration-base ease-out-expo focus-within:border-text-primary/40 focus-within:shadow-float-hover"
+      className="relative rounded-[26px] bg-bg-secondary px-5 py-3 border border-border transition-all duration-base ease-out-expo focus-within:bg-bg-elevated focus-within:border-text-primary/40 focus-within:shadow-float"
     >
       <div className="flex items-end gap-3">
         <textarea
@@ -74,13 +74,13 @@ export default function Composer({
           disabled={disabled}
           placeholder={placeholder}
           aria-label="Message Command F"
-          className="flex-1 min-w-0 resize-none bg-transparent outline-none text-base text-text-primary placeholder:text-text-muted py-1 leading-relaxed disabled:opacity-50"
+          className="flex-1 min-w-0 resize-none bg-transparent outline-none focus:outline-none focus-visible:outline-none text-base text-text-primary placeholder:text-text-muted py-1 leading-relaxed disabled:opacity-50"
         />
         <button
           type="button"
           onClick={onSubmit}
           disabled={disabled || !value.trim() || sending}
-          className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full disabled:opacity-40 ${INK_BTN} ${FOCUS}`}
+          className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full active:scale-95 disabled:opacity-40 disabled:active:scale-100 ${INK_BTN} ${FOCUS}`}
           aria-label="Send"
         >
           {sending

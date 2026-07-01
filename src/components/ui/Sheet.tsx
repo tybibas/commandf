@@ -22,10 +22,10 @@ export interface SheetProps {
 /**
  * Sheet — right-side slide-over panel.
  *
- * Hairline left border, charcoal surface, no shadow. 180ms ease-out-expo translateX.
- * Backdrop is a low-opacity wash of the canvas with a subtle blur — never an overlay
- * scrim. Escape and backdrop click dismiss. Focus moves to the panel on open and
- * returns to the previously focused element on close.
+ * Near-white elevated surface, hairline left border, soft float shadow. 180ms
+ * ease-out-expo translateX. Backdrop is a low-opacity ink wash. Escape and backdrop
+ * click dismiss. Focus moves to the panel on open and returns to the previously
+ * focused element on close.
  *
  * Renders into a portal on document.body. Mounts only while `open` is true (after a
  * one-frame paint of the closed state so the enter transition runs).
@@ -120,7 +120,7 @@ const Sheet = React.forwardRef<HTMLDivElement, SheetProps>(function Sheet(
 
   const panelCls = [
     'absolute top-0 right-0 h-full flex flex-col outline-none',
-    'bg-bg-elevated border-l border-border-light',
+    'bg-bg-elevated border-l border-border-light shadow-float',
     'transition-transform ease-out-expo',
     visible ? 'translate-x-0' : 'translate-x-full',
     className,

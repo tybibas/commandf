@@ -129,7 +129,7 @@ export default function SurveySurface({ onBack }: { onBack: () => void }) {
             placeholder="Survey Compendium"
             disabled={busy || !file}
             aria-disabled={!file}
-            className={`mt-1 w-full rounded-lg border border-border bg-bg-secondary px-3.5 py-2.5 text-[14px] text-text-primary placeholder:text-text-muted outline-none focus:border-text-primary/40 transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
+            className={`mt-1 w-full rounded-surface border border-border bg-bg-secondary px-3.5 py-2.5 text-[14px] text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
           />
         </label>
 
@@ -137,7 +137,7 @@ export default function SurveySurface({ onBack }: { onBack: () => void }) {
           <button
             onClick={generate}
             disabled={!file || busy}
-            className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-[13px] font-medium disabled:opacity-40 ${INK_BTN}`}
+            className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-control text-[13px] font-medium disabled:opacity-40 ${INK_BTN}`}
           >
             <Sparkles className="w-4 h-4" /> Build compendium
           </button>

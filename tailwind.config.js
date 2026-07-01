@@ -52,6 +52,7 @@ export default {
         'display': ['40px', { lineHeight: '48px', letterSpacing: '-0.025em' }],
       },
       fontFamily: {
+        'serif': ['Newsreader', 'Georgia', 'Times New Roman', 'serif'],
         'outfit': ['Outfit', 'sans-serif'],
         'inter': ['Inter', 'sans-serif'],
         'num': ['Geist', 'Inter', 'system-ui', 'sans-serif'],

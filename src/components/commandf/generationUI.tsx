@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check } from 'lucide-react';
 import type { JobStatus } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -42,22 +42,66 @@ export function PendingNote(_: { endpoint: string }) {
   );
 }
 
+/**
+ * Working trace — an advancing "Completed N steps" affordance distilled from
+ * Perplexity / Harvey. Steps below the active one read as done (check), the
+ * current one spins, upcoming ones sit quiet. The final phase holds while the
+ * job keeps polling — honest: it never claims completion the backend hasn't sent.
+ */
 export function RunningPanel({ label, phases }: { label: string; phases?: string[] }) {
   const pool = phases && phases.length > 0 ? phases : [label];
-  const [idx, setIdx] = useState(0);
+  const [active, setActive] = useState(0);
 
   useEffect(() => {
+    setActive(0);
     if (pool.length <= 1) return;
     const id = setInterval(() => {
-      setIdx((prev) => (prev + 1) % pool.length);
+      // Advance up to — but not past — the last step; it holds until the job resolves.
+      setActive((prev) => Math.min(prev + 1, pool.length - 1));
     }, 2200);
     return () => clearInterval(id);
   }, [pool.length]);
 
+  const done = Math.min(active, pool.length - 1);
+
   return (
-    <div className="mt-5 flex items-center gap-2.5 animate-slide-up">
-      <Loader2 className="w-4 h-4 animate-spin text-text-muted shrink-0" aria-hidden />
-      <span className="text-[13px] text-text-secondary">{pool[idx]}</span>
+    <div className="mt-5 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3.5 animate-slide-up">
+      <div className="flex items-center gap-2 mb-2.5">
+        <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted shrink-0" aria-hidden />
+        <p className="eyebrow text-text-muted" aria-live="polite">
+          Working · step {done + 1} of {pool.length}
+        </p>
+      </div>
+      <ol className="space-y-2">
+        {pool.map((step, i) => {
+          const isDone = i < active;
+          const isActive = i === active;
+          return (
+            <li key={i} className="flex items-center gap-2.5">
+              <span
+                className={[
+                  'inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-full',
+                  isDone ? 'bg-text-primary text-bg-primary'
+                    : isActive ? 'border border-border-hover'
+                    : 'border border-border-light',
+                ].join(' ')}
+                aria-hidden
+              >
+                {isDone && <Check className="w-2.5 h-2.5" strokeWidth={3} />}
+                {isActive && <Loader2 className="w-2.5 h-2.5 animate-spin text-text-muted" />}
+              </span>
+              <span
+                className={[
+                  'text-[13px] transition-colors',
+                  isActive ? 'text-text-primary' : isDone ? 'text-text-secondary' : 'text-text-muted',
+                ].join(' ')}
+              >
+                {step}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }
@@ -86,10 +130,13 @@ export function ResultPanel({
   result, kindLabel, onReset,
 }: { result: JobStatus; kindLabel: string; onReset: () => void }) {
   return (
-    <div className="mt-5 rounded-surface border border-transparent bg-bg-secondary overflow-hidden animate-slide-up shadow-float">
+    <div className="mt-5 rounded-surface border border-border-light bg-bg-elevated overflow-hidden animate-slide-up shadow-float">
       <div className="px-5 py-4 flex items-start gap-3">
         <div className="flex-1 min-w-0">
-          <p className="eyebrow text-text-muted mb-1">{kindLabel} ready</p>
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <Check className="w-3 h-3 text-success shrink-0" strokeWidth={3} aria-hidden />
+            <p className="eyebrow text-text-muted">{kindLabel} ready</p>
+          </div>
           <h2 className="font-outfit text-[16px] font-semibold text-text-primary leading-snug truncate">
             {result.title || 'Generated deck'}
           </h2>
