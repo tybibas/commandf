@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { LogOut } from 'lucide-react';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ClientStrategyProvider } from '../contexts/ClientStrategyContext';
@@ -29,11 +30,21 @@ function SignOutButton() {
 function Gate() {
   const { user, session, loading, profileLoading, mustChangePassword } = useAuth();
 
+  // Resilience: if the session check / profile fetch hasn't resolved in 10s
+  // (e.g. a cold or degraded Supabase project timing out), stop spinning
+  // forever and fall through to the login screen so the user can retry.
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (!(loading || profileLoading)) { setGaveUp(false); return; }
+    const t = setTimeout(() => setGaveUp(true), 10_000);
+    return () => clearTimeout(t);
+  }, [loading, profileLoading]);
+
   // Show spinner during initial session check OR while the profile row is
   // being fetched after sign-in. The second condition is critical: without it,
   // Gate keeps rendering CommandFLogin while the profile loads, leaving the
   // form stuck in "Signing in…" if the profile row is missing or slow.
-  if (loading || profileLoading) {
+  if ((loading || profileLoading) && !gaveUp) {
     return (
       <FullScreen>
         <div className="flex flex-col items-center gap-4">

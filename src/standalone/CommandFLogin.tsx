@@ -19,13 +19,22 @@ export function CommandFLogin() {
     e.preventDefault();
     setError('');
     setLoading(true);
-    const { error } = await signIn(email.trim(), password);
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-    } else {
-      // Gate will swap to a spinner (profileLoading) then to the app.
-      // Always reset local loading so this form is never left stuck.
+    try {
+      const { error } = await signIn(email.trim(), password);
+      if (error) {
+        // A 504/gateway timeout returns an empty body, so supabase-js hands back
+        // an error whose message is blank or "{}". Show something human instead.
+        const raw = (error.message ?? '').trim();
+        const unhelpful = !raw || raw === '{}' || /gateway|timeout|504|failed to fetch/i.test(raw);
+        setError(unhelpful
+          ? 'Sign-in timed out — the service may be waking up. Wait a moment and try again.'
+          : raw);
+      }
+    } catch {
+      setError('Could not reach the sign-in service. Check your connection and try again.');
+    } finally {
+      // Gate swaps to a spinner (profileLoading) then the app on success; always
+      // reset local loading so this form is never left stuck.
       setLoading(false);
     }
   }
