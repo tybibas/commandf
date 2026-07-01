@@ -69,7 +69,7 @@ export default function DeckSurface({
             rows={6}
             placeholder="e.g. 90-day operating-model review for a mid-market insurer CFO — pull our Cardinal Mutual work, lead with the value-creation thesis."
             disabled={busy}
-            className={`mt-1 w-full resize-y max-h-[50vh] rounded-lg border border-border bg-bg-secondary px-3.5 py-2.5 text-[14px] text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-text-primary/40 transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
+            className={`mt-1 w-full resize-y max-h-[50vh] rounded-surface border border-border bg-bg-secondary px-3.5 py-2.5 text-[14px] text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
           />
           <p className="mt-1.5 text-caption text-text-muted">{EXAMPLE}</p>
         </label>
@@ -100,7 +100,7 @@ export default function DeckSurface({
           <button
             onClick={generate}
             disabled={!brief.trim() || busy}
-            className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-[13px] font-medium disabled:opacity-40 ${INK_BTN}`}
+            className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-control text-[13px] font-medium disabled:opacity-40 ${INK_BTN}`}
           >
             <Sparkles className="w-4 h-4" /> Generate deck
           </button>

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { Zap, ShieldCheck } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 
 /**
  * Shown when a user is on a temporary password (auth user_metadata
@@ -51,14 +51,12 @@ export function SetPasswordScreen() {
   return (
     <div className="min-h-screen bg-bg-primary flex items-center justify-center px-4">
       <div className="max-w-md w-full">
-        <div className="bg-bg-elevated rounded-2xl border border-border-light p-8">
+        <div className="bg-bg-elevated rounded-surface border border-border-light shadow-float p-8">
           <div className="text-center mb-8">
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <Zap className="h-10 w-10 text-warning" />
-              <h1 className="text-3xl font-medium text-text-primary tracking-tight leading-none">PULSEPOINT</h1>
-            </div>
-            <div className="mt-4 flex items-center justify-center gap-2 text-text-secondary">
-              <ShieldCheck className="h-4 w-4 text-success" />
+            {/* Wordmark — editorial serif, matches the login surface */}
+            <span className="font-serif text-[28px] tracking-[-0.015em] text-text-primary leading-none">Command F</span>
+            <div className="mt-5 flex items-center justify-center gap-2 text-text-secondary">
+              <ShieldCheck className="h-4 w-4 text-success" strokeWidth={1.75} />
               <p className="text-sm font-medium text-text-primary">Set your password</p>
             </div>
             <p className="mt-2 text-sm text-text-secondary">
@@ -110,11 +108,11 @@ export function SetPasswordScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-9 px-4 rounded-control text-sm font-medium bg-warning text-warning-fg hover:bg-warning/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
+              className="w-full h-9 px-4 rounded-control text-sm font-medium bg-text-primary text-bg-primary hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 border-2 border-warning-fg border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 border-2 border-bg-primary border-t-transparent rounded-full animate-spin" />
                   Saving...
                 </span>
               ) : (

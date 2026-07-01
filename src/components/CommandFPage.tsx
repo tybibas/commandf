@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Command, History, Plus, Trash2, Database,
+  History, Plus, Trash2, Database,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { useClientStrategy } from '../contexts/ClientStrategyContext';
@@ -207,8 +207,8 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-md text-center">
-          <Command className="w-6 h-6 text-text-muted mx-auto mb-3" />
-          <h2 className="font-outfit text-lg text-text-primary mb-1">Command F isn't configured</h2>
+          <span className="font-serif text-[24px] tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
+          <h2 className="text-lg font-medium text-text-primary mb-1">Not configured</h2>
           <p className="text-body text-text-secondary">
             Set <code className="font-mono text-caption">VITE_MODAL_COMMANDF_URL</code> in the dashboard environment to enable it.
           </p>
@@ -242,36 +242,37 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
       <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
 
       {/* Header — h-11 (44px), flat bg, minimal chrome */}
-      <header className="h-11 px-4 border-b border-hairline bg-bg-primary flex items-center gap-3 shrink-0">
-        <Command className="w-4 h-4 text-text-muted shrink-0" />
+      <header className="h-11 px-4 hairline-b bg-bg-primary flex items-center gap-3 shrink-0">
         <div className="flex-1 min-w-0">
-          <div className="flex items-baseline gap-2 min-w-0">
-            <span className="text-[14px] font-medium tracking-tight text-text-primary leading-none whitespace-nowrap">Command F</span>
+          <div className="flex items-baseline gap-2.5 min-w-0">
+            {/* Wordmark — editorial serif, distilled from the Harvey / Claude wordmarks */}
+            <span className="font-serif text-[16px] tracking-[-0.01em] text-text-primary leading-none whitespace-nowrap">Command F</span>
+            <span className="hidden sm:block h-3 w-px bg-border-light shrink-0" aria-hidden />
             <span className="text-[12px] text-text-muted truncate hidden sm:block">{headerSubtitle}</span>
           </div>
         </div>
-        {/* Controls — icon-only below md, icon + label at md+ */}
-        <div className="flex items-center flex-wrap gap-y-2 gap-x-1.5">
+        {/* Controls — one aligned cluster; icon-only below md, icon + label at md+ */}
+        <div className="flex items-center gap-1">
           <button
             onClick={() => setShowKnowledge(true)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-control text-body ${GHOST_BTN}`}
+            className={`flex items-center gap-1.5 h-7 px-2.5 rounded-control text-body ${GHOST_BTN}`}
           >
-            <Database className="w-3.5 h-3.5" />
+            <Database className="w-3.5 h-3.5 text-text-muted" strokeWidth={1.75} />
             <span className="hidden md:inline">Knowledge</span>
           </button>
           <button
             onClick={() => setShowSessions((s) => !s)}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-control text-body ${GHOST_BTN}`}
+            className={`flex items-center gap-1.5 h-7 px-2.5 rounded-control text-body ${GHOST_BTN}`}
           >
-            <History className="w-3.5 h-3.5" />
+            <History className="w-3.5 h-3.5 text-text-muted" strokeWidth={1.75} />
             <span className="hidden md:inline">History</span>
           </button>
           {surface === 'chat' && (
             <button
               onClick={newChat}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-control text-body ${GHOST_BTN}`}
+              className={`flex items-center gap-1.5 h-7 px-2.5 rounded-control text-body ${GHOST_BTN}`}
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 text-text-muted" strokeWidth={1.75} />
               <span className="hidden md:inline">New</span>
             </button>
           )}
@@ -281,12 +282,12 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
               value={model}
               onChange={(e) => setModel(e.target.value)}
               aria-label="Chat model"
-              className={`text-body bg-bg-secondary border border-border-light rounded-control px-2.5 py-1.5 text-text-secondary outline-none ${FOCUS}`}
+              className={`ml-1 text-body h-7 bg-transparent border border-border-light hover:bg-bg-tertiary rounded-control px-2 text-text-secondary outline-none transition-colors ${MOTION} ${FOCUS}`}
             >
               {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
             </select>
           )}
-          {headerExtra}
+          {headerExtra && <div className="ml-1 flex items-center">{headerExtra}</div>}
         </div>
       </header>
 
@@ -298,21 +299,23 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
         width={420}
       >
         {sessions.length === 0 ? (
-          <p className="text-caption text-text-muted px-4 pt-2">No conversations yet.</p>
+          <div className="px-5 pt-6 text-center">
+            <p className="text-body text-text-secondary">No conversations yet</p>
+            <p className="text-caption text-text-muted mt-1">Your recent threads will appear here.</p>
+          </div>
         ) : (
           <div className="space-y-0.5 px-2 py-2">
             {sessions.map((s) => (
               <div
                 key={s.id}
-                className={`group flex items-center gap-2 px-2 py-1.5 rounded-control transition-colors ${MOTION} ${s.id === sessionId ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary/60'}`}
+                className={`group flex items-center gap-2 pl-2.5 pr-1.5 py-2 rounded-control transition-colors ${MOTION} ${s.id === sessionId ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary/60'}`}
               >
                 <button
                   onClick={() => openSession(s.id)}
-                  className={`flex flex-1 items-center gap-2 min-w-0 text-left rounded-control ${FOCUS}`}
+                  className={`flex flex-1 flex-col min-w-0 text-left rounded-control ${FOCUS}`}
                 >
-                  <History className="w-3.5 h-3.5 text-text-muted shrink-0" />
-                  <span className="flex-1 truncate text-body">{s.title || 'Untitled'}</span>
-                  <span className="text-micro text-text-muted shrink-0">{timeAgo(s.updated_at)}</span>
+                  <span className="truncate text-body leading-tight">{s.title || 'Untitled'}</span>
+                  <span className="text-micro text-text-muted mt-0.5">{timeAgo(s.updated_at)}</span>
                 </button>
                 <button
                   onClick={() => onDeleteSession(s.id)}

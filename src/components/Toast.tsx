@@ -19,31 +19,22 @@ export function Toast({ message, type, onClose, duration = 5000 }: ToastProps) {
   }, [duration, onClose, type]);
 
   const icons = {
-    success: <CheckCircle2 className="h-5 w-5 text-emerald-400" />,
-    error: <AlertCircle className="h-5 w-5 text-red-400" />,
-    loading: <Loader2 className="h-5 w-5 text-info animate-spin" />,
-  };
-
-  const backgrounds = {
-    success: 'bg-emerald-500/10 border-emerald-500/30',
-    error: 'bg-red-500/10 border-red-500/30',
-    loading: 'bg-info-soft border-info/30',
+    success: <CheckCircle2 className="h-4 w-4 text-success shrink-0" strokeWidth={2} />,
+    error: <AlertCircle className="h-4 w-4 text-error shrink-0" strokeWidth={2} />,
+    loading: <Loader2 className="h-4 w-4 text-text-muted shrink-0 animate-spin" strokeWidth={2} />,
   };
 
   return (
-    <div className={`
-      flex items-center gap-3 px-4 py-3 rounded-lg border shadow-xl
-      ${backgrounds[type]}
-      animate-slide-in
-    `}>
+    <div className="flex items-center gap-2.5 pl-3.5 pr-2 py-2.5 rounded-surface border border-border-light bg-bg-elevated shadow-float animate-slide-in">
       {icons[type]}
-      <p className="text-white text-sm font-medium flex-1">{message}</p>
+      <p className="text-text-primary text-body font-medium flex-1 leading-snug">{message}</p>
       {type !== 'loading' && (
         <button
           onClick={onClose}
-          className="text-[#707070] hover:text-white transition-colors"
+          aria-label="Dismiss"
+          className="inline-flex items-center justify-center w-6 h-6 rounded-control text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors duration-fast ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
         >
-          <X className="h-4 w-4" />
+          <X className="h-3.5 w-3.5" />
         </button>
       )}
     </div>
