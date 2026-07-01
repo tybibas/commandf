@@ -1,11 +1,160 @@
+import { useState, useRef, useEffect } from 'react';
 import {
-  PanelLeftClose, PanelLeft, Plus, Database, MessageSquare, Trash2,
+  PanelLeftClose, PanelLeft, Plus, Database, MessageSquare, Trash2, LogOut, ChevronUp,
 } from 'lucide-react';
 import { timeAgo } from './util';
 import type { Session } from './api';
 
 const MOTION = 'duration-fast ease-out-expo';
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
+
+// ── AccountBar ────────────────────────────────────────────────────────────────
+// Renders a Claude-style profile row in the expanded state and a single
+// centered avatar in the collapsed rail. Sign-out is always one click away.
+
+interface AccountBarProps {
+  collapsed: boolean;
+  userName?: string;
+  userEmail?: string;
+  planLabel?: string;
+  onSignOut: () => void;
+}
+
+function getInitial(name?: string, email?: string): string {
+  return (name?.trim()[0] || email?.trim()[0] || '?').toUpperCase();
+}
+
+function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: AccountBarProps) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const displayName = userName || userEmail?.split('@')[0] || 'Account';
+  const subtitle = planLabel || (userEmail ? userEmail : 'Signed in');
+  const initial = getInitial(userName, userEmail);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (
+        menuRef.current && !menuRef.current.contains(e.target as Node) &&
+        triggerRef.current && !triggerRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: KeyboardEvent) { if (e.key === 'Escape') setOpen(false); }
+    document.addEventListener('keydown', handle);
+    return () => document.removeEventListener('keydown', handle);
+  }, [open]);
+
+  // Avatar element — shared between both states
+  const avatar = (
+    <span
+      aria-hidden
+      className="shrink-0 w-7 h-7 rounded-full bg-accent-primary text-bg-primary flex items-center justify-center text-[11px] font-semibold leading-none select-none"
+    >
+      {initial}
+    </span>
+  );
+
+  if (collapsed) {
+    return (
+      <div className="relative flex justify-center">
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Account menu"
+          title={`${displayName} — click for options`}
+          aria-expanded={open}
+          aria-haspopup="menu"
+          className={`inline-flex items-center justify-center w-9 h-9 rounded-control hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+        >
+          {avatar}
+        </button>
+
+        {/* Collapsed mini-menu — floats to the right of the rail */}
+        {open && (
+          <div
+            ref={menuRef}
+            role="menu"
+            className="absolute bottom-0 left-full ml-2 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-dark-sm py-1 animate-fade-in"
+          >
+            <div className="px-3 py-2 border-b border-border-light">
+              <p className="text-body font-medium text-text-primary truncate">{displayName}</p>
+              {userEmail && <p className="text-micro text-text-muted truncate mt-0.5">{userEmail}</p>}
+            </div>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => { setOpen(false); onSignOut(); }}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-body text-text-secondary hover:text-error hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+            >
+              <LogOut className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Expanded state — compact profile row
+  return (
+    <div className="relative">
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Account menu"
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-control hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS} group`}
+      >
+        {avatar}
+        <span className="flex-1 min-w-0 text-left">
+          <span className="block truncate text-body font-medium text-text-primary leading-tight">{displayName}</span>
+          <span className="block truncate text-micro text-text-muted leading-tight mt-0.5">{subtitle}</span>
+        </span>
+        <ChevronUp
+          className={`shrink-0 w-3.5 h-3.5 text-text-muted transition-transform ${MOTION} ${open ? '' : 'rotate-180'}`}
+          strokeWidth={2}
+          aria-hidden
+        />
+      </button>
+
+      {/* Expanded popover menu — floats above the trigger */}
+      {open && (
+        <div
+          ref={menuRef}
+          role="menu"
+          className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-surface bg-bg-elevated border border-border shadow-dark-sm py-1 animate-fade-in"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { setOpen(false); onSignOut(); }}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-body text-text-secondary hover:text-error hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+          >
+            <LogOut className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SidebarProps ──────────────────────────────────────────────────────────────
 
 interface SidebarProps {
   collapsed: boolean;
@@ -20,12 +169,18 @@ interface SidebarProps {
   contextLabel: string;
   /** Workspace logo (e.g. the Actionist wordmark) shown in the footer. */
   logoSrc?: string;
-  account?: React.ReactNode;
+  /** Structured account props — replaces the opaque `account` ReactNode. */
+  userName?: string;
+  userEmail?: string;
+  /** Muted subtitle shown under the name (e.g. plan, workspace). */
+  planLabel?: string;
+  onSignOut?: () => void;
 }
 
 export default function Sidebar({
   collapsed, onToggle, onNewChat, sessions, activeSessionId,
-  onOpenSession, onDeleteSession, onOpenKnowledge, docCount, contextLabel, logoSrc, account,
+  onOpenSession, onDeleteSession, onOpenKnowledge, docCount, contextLabel, logoSrc,
+  userName, userEmail, planLabel, onSignOut,
 }: SidebarProps) {
   return (
     <aside
@@ -138,13 +293,21 @@ export default function Sidebar({
       </div>
 
       {/* ── Footer: workspace identity + account (pinned) ──────────────── */}
-      <div className={`shrink-0 hairline-t ${collapsed ? 'px-2 py-2' : 'px-4 py-3'} space-y-2.5`}>
+      <div className={`shrink-0 hairline-t ${collapsed ? 'px-2 py-2' : 'px-3 py-3'} space-y-2`}>
         {!collapsed && (
           logoSrc
-            ? <img src={logoSrc} alt={contextLabel} title={contextLabel} className="brand-logo h-4 w-auto opacity-90 select-none" />
-            : (contextLabel && <p className="text-caption text-text-muted truncate" title={contextLabel}>{contextLabel}</p>)
+            ? <img src={logoSrc} alt={contextLabel} title={contextLabel} className="brand-logo h-4 w-auto opacity-90 select-none mb-1" />
+            : (contextLabel && <p className="text-caption text-text-muted truncate px-1 mb-1" title={contextLabel}>{contextLabel}</p>)
         )}
-        {account}
+        {onSignOut && (
+          <AccountBar
+            collapsed={collapsed}
+            userName={userName}
+            userEmail={userEmail}
+            planLabel={planLabel}
+            onSignOut={onSignOut}
+          />
+        )}
       </div>
     </aside>
   );
