@@ -30,7 +30,10 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const displayName = userName || userEmail?.split('@')[0] || 'Account';
-  const subtitle = planLabel || (userEmail ? userEmail : 'Signed in');
+  // Prefer email as subtitle (concrete identity signal); fall back to planLabel
+  // or a generic string. Showing planLabel here is redundant when the workspace
+  // logo already renders above the hairline in the sidebar footer.
+  const subtitle = userEmail || planLabel || 'Signed in';
   const initial = getInitial(userName, userEmail);
 
   // Close on outside click
@@ -190,7 +193,7 @@ export default function Sidebar({
       {/* ── Header: wordmark + collapse toggle ─────────────────────────── */}
       <div className={`flex items-center h-14 shrink-0 ${collapsed ? 'justify-center px-0' : 'justify-between px-4'}`}>
         {!collapsed && (
-          <span className="font-serif text-[15px] leading-none text-text-primary tracking-tight select-none">
+          <span className="font-outfit font-semibold text-[15px] leading-none text-text-primary tracking-tight select-none">
             Command&nbsp;F
           </span>
         )}
@@ -207,21 +210,21 @@ export default function Sidebar({
       </div>
 
       {/* ── New chat ───────────────────────────────────────────────────── */}
-      <div className={`shrink-0 ${collapsed ? 'px-2' : 'px-3'} pb-2`}>
+      <div className={`shrink-0 ${collapsed ? 'px-2' : 'px-3'} pb-1.5`}>
         <button
           type="button"
           onClick={onNewChat}
           title={collapsed ? 'New chat' : undefined}
           aria-label="New chat"
-          className={`w-full inline-flex items-center rounded-control border border-border-light bg-bg-primary text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2.5 px-3 h-9 text-body font-medium'}`}
+          className={`w-full inline-flex items-center rounded-control border border-border bg-bg-primary text-text-primary hover:bg-bg-tertiary hover:border-border-hover transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2 px-3 h-9 text-body font-medium'}`}
         >
-          <Plus className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden />
+          <Plus className="w-[15px] h-[15px] shrink-0" strokeWidth={2.25} aria-hidden />
           {!collapsed && <span>New chat</span>}
         </button>
       </div>
 
       {/* ── Knowledge base ─────────────────────────────────────────────── */}
-      <div className={`shrink-0 ${collapsed ? 'px-2' : 'px-3'} pb-2`}>
+      <div className={`shrink-0 ${collapsed ? 'px-2' : 'px-3'} pb-1.5`}>
         <button
           type="button"
           onClick={onOpenKnowledge}
@@ -229,12 +232,12 @@ export default function Sidebar({
           aria-label="Open knowledge base"
           className={`w-full inline-flex items-center rounded-control text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2.5 px-3 h-9'}`}
         >
-          <Database className="w-4 h-4 shrink-0" strokeWidth={1.75} aria-hidden />
+          <Database className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} aria-hidden />
           {!collapsed && (
             <>
               <span className="flex-1 text-left text-body truncate">Knowledge base</span>
               {docCount > 0 && (
-                <span className="shrink-0 font-num text-micro tabular-nums text-text-muted">{docCount.toLocaleString()}</span>
+                <span className="shrink-0 text-micro tabular-nums text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded-sm font-medium">{docCount.toLocaleString()}</span>
               )}
             </>
           )}
@@ -244,10 +247,10 @@ export default function Sidebar({
       {/* ── Recent sessions ────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex flex-col">
         {!collapsed && (
-          <p className="eyebrow text-text-muted px-4 pt-2 pb-1.5 shrink-0">Recent</p>
+          <p className="eyebrow text-text-muted px-4 pt-2 pb-1 shrink-0">Recent</p>
         )}
         <nav
-          className={`flex-1 min-h-0 overflow-y-auto scrollbar-thin ${collapsed ? 'px-2' : 'px-2'}`}
+          className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-2"
           aria-label="Recent conversations"
         >
           {sessions.length === 0 ? (
@@ -258,22 +261,24 @@ export default function Sidebar({
               return (
                 <div key={s.id} className="group/row relative">
                   {active && !collapsed && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-0.5 rounded-full bg-brand" aria-hidden />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-brand" aria-hidden />
                   )}
                   <button
                     type="button"
                     onClick={() => onOpenSession(s.id)}
                     aria-current={active ? 'page' : undefined}
                     title={collapsed ? s.title : undefined}
-                    className={`w-full flex items-center rounded-control transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2.5 pl-3 pr-8 h-11 text-left'} ${active ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}
+                    className={`w-full flex items-center rounded-control transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'pl-3 pr-8 h-[42px] text-left'} ${active ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}
                   >
-                    <MessageSquare className={`w-4 h-4 shrink-0 ${active ? 'text-brand' : ''}`} strokeWidth={1.5} aria-hidden />
-                    {!collapsed && (
-                      <span className="flex-1 min-w-0 flex flex-col leading-tight">
-                        <span className="truncate text-body">{s.title || 'Untitled'}</span>
-                        <span className="truncate text-micro text-text-muted mt-0.5">{timeAgo(s.updated_at)}</span>
-                      </span>
-                    )}
+                    {collapsed
+                      ? <MessageSquare className="w-4 h-4 shrink-0" strokeWidth={1.5} aria-hidden />
+                      : (
+                        <span className="flex-1 min-w-0 flex flex-col leading-tight">
+                          <span className={`truncate text-body ${active ? 'font-medium' : ''}`}>{s.title || 'Untitled'}</span>
+                          <span className="truncate text-micro text-text-muted mt-0.5">{timeAgo(s.updated_at)}</span>
+                        </span>
+                      )
+                    }
                   </button>
                   {!collapsed && (
                     <button
@@ -292,14 +297,19 @@ export default function Sidebar({
         </nav>
       </div>
 
-      {/* ── Footer: workspace identity + account (pinned) ──────────────── */}
-      <div className={`shrink-0 hairline-t ${collapsed ? 'px-2 py-2' : 'px-3 py-3'} space-y-2`}>
-        {!collapsed && (
-          logoSrc
-            ? <img src={logoSrc} alt={contextLabel} title={contextLabel} className="brand-logo h-4 w-auto opacity-90 select-none mb-1" />
-            : (contextLabel && <p className="text-caption text-text-muted truncate px-1 mb-1" title={contextLabel}>{contextLabel}</p>)
-        )}
-        {onSignOut && (
+      {/* ── Footer: workspace identity (above hairline) ────────────────── */}
+      {!collapsed && (logoSrc || contextLabel) && (
+        <div className="shrink-0 px-4 pb-2 pt-1">
+          {logoSrc
+            ? <img src={logoSrc} alt={contextLabel} title={contextLabel} className="brand-logo h-4 w-auto opacity-75 select-none" />
+            : <p className="text-caption text-text-muted truncate" title={contextLabel}>{contextLabel}</p>
+          }
+        </div>
+      )}
+
+      {/* ── Account tile (sole occupant below hairline) ─────────────────── */}
+      {onSignOut && (
+        <div className={`shrink-0 hairline-t ${collapsed ? 'px-2 py-2' : 'px-3 py-2'}`}>
           <AccountBar
             collapsed={collapsed}
             userName={userName}
@@ -307,8 +317,8 @@ export default function Sidebar({
             planLabel={planLabel}
             onSignOut={onSignOut}
           />
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 }
