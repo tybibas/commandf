@@ -16,7 +16,12 @@ export type Source = {
   n?: number;
   file_name: string;
   file_id?: string;
+  file_path?: string;
+  chunk_index?: number;
   link?: string;
+  // The backend sends the retrieved passage as `content`; older payloads used
+  // `snippet`. Accept either — the UI reads `content ?? snippet`.
+  content?: string;
   snippet?: string;
   similarity?: number;
 };
@@ -71,9 +76,12 @@ export type ChatResponse = {
   session_id?: string;
 };
 
-// Job shapes for the not-yet-live generation endpoints.
+// Job shapes for the generation endpoints. The backend emits `done` on success
+// (older code used `complete`) — both are accepted by useJob. `progress` is a
+// human-readable status line ("planning storyline…", "writing slides…").
 export type JobStatus = {
-  status: 'queued' | 'running' | 'complete' | 'error';
+  status: 'queued' | 'running' | 'complete' | 'done' | 'error';
+  progress?: string;
   slide_count?: number;
   sheet_count?: number;
   title?: string;
@@ -119,6 +127,13 @@ async function bearer(): Promise<string> {
 export async function currentToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
+}
+
+/** Stable per-user id (JWT sub) for keying the local sessions cache; null if
+ * not signed in. Never throws. */
+export async function currentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user?.id ?? null;
 }
 
 function requireUrl(): string {
@@ -231,13 +246,13 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
 export async function generateDeck(input: {
   request: string; deliverable_type?: string; session_id?: string | null; client_slug?: string;
 }): Promise<{ job_id: string }> {
-  return postJob('/generate-deck', JSON.stringify(input), false);
+  return postJob('/generate', JSON.stringify(input), false);
 }
 
 export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   const url = requireUrl();
-  const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
-  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
+  const res = await fetch(`${url}/generate/${encodeURIComponent(jobId)}`, { headers: await authHeaders() });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate');
   return json<JobStatus>(res);
 }
 
@@ -255,7 +270,7 @@ export async function surveyCompendiumStatus(jobId: string): Promise<JobStatus> 
   return json<JobStatus>(res);
 }
 
-export async function uploadDocument(file: File, metadata?: Record<string, unknown>): Promise<{ file_id: string; file_name: string; status: string }> {
+export async function uploadDocument(file: File, metadata?: Record<string, unknown>): Promise<{ file_id: string; file_name: string; chunks_added?: number; status: string }> {
   const url = requireUrl();
   const token = await bearer();
   const form = new FormData();
@@ -265,5 +280,5 @@ export async function uploadDocument(file: File, metadata?: Record<string, unkno
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
   });
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
-  return json<{ file_id: string; file_name: string; status: string }>(res);
+  return json<{ file_id: string; file_name: string; chunks_added?: number; status: string }>(res);
 }

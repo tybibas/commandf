@@ -8,8 +8,9 @@ import { useClientStrategy } from '../contexts/ClientStrategyContext';
 import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChat, deleteSession,
-  fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentToken, NotSignedInError,
+  fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentToken, currentUserId, NotSignedInError,
 } from './commandf/api';
+import { readSessionsCache, writeSessionsCache } from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
 import Composer from './commandf/Composer';
 import Conversation from './commandf/Conversation';
@@ -64,6 +65,8 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
 
   const toast = useToast();
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Stable user id for keying the local sessions cache (avoids stale closures).
+  const userIdRef = useRef<string | null>(null);
 
   const notConfigured = !COMMANDF_URL;
 
@@ -72,8 +75,11 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     if (b) setBriefing(b);
   }, []);
 
+  // Refetch the authoritative list and reconcile the local cache. On failure we
+  // keep whatever is on screen (optimistic/cached) rather than blanking it.
   const loadSessions = useCallback(async () => {
-    setSessions(await fetchSessions().catch(() => []));
+    const fresh = await fetchSessions().catch(() => null);
+    if (fresh) { setSessions(fresh); writeSessionsCache(userIdRef.current, fresh); }
   }, []);
 
   const loadSidecar = useCallback(async () => {
@@ -83,6 +89,12 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
       setLoading(false);
       return;
     }
+    // Seed the sidebar from the per-user cache immediately (zero-flash), then
+    // revalidate against the server below (stale-while-revalidate).
+    const uid = await currentUserId();
+    userIdRef.current = uid;
+    const cached = readSessionsCache(uid);
+    if (cached.length) setSessions(cached);
     try {
       const [m] = await Promise.all([
         fetchModels().catch(() => []),
@@ -144,7 +156,16 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     setSending(true);
     try {
       const data = await sendChat(msg, model, sessionId);
-      if (data.session_id && !sessionId) { setSessionId(data.session_id); loadSessions(); }
+      if (data.session_id && !sessionId) {
+        // New thread — optimistically insert it at the top of the rail so it
+        // appears instantly (title = first message), then reconcile with server.
+        setSessionId(data.session_id);
+        setSessions((prev) => [
+          { id: data.session_id!, title: msg.slice(0, 60), updated_at: new Date().toISOString() },
+          ...prev.filter((s) => s.id !== data.session_id),
+        ]);
+        loadSessions();
+      }
       setMessages((prev) => [...prev, { role: 'assistant', content: data.response, sources: data.sources || [] }]);
     } catch (e: any) {
       const m = e instanceof NotSignedInError ? e.message : (e?.message || 'Something went wrong.');
@@ -156,9 +177,19 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
   };
 
   const onDeleteSession = async (sid: string) => {
-    try { await deleteSession(sid); } catch { /* ignore */ }
+    // Optimistic remove — drop it from the rail immediately; restore on failure.
+    const prev = sessions;
+    const next = sessions.filter((s) => s.id !== sid);
+    setSessions(next);
+    writeSessionsCache(userIdRef.current, next);
     if (sid === sessionId) newChat();
-    loadSessions();
+    try {
+      await deleteSession(sid);
+    } catch {
+      setSessions(prev);
+      writeSessionsCache(userIdRef.current, prev);
+      toast.error('Could not delete conversation.');
+    }
   };
 
   const onConnectDrive = async () => {

@@ -15,6 +15,8 @@ export function SourceCard({ source }: { source: Source }) {
   const parsed = parseDeliverableName(source.file_name);
   const band = confidenceBand(source.similarity);
   const hasLink = Boolean(source.link);
+  // Backend sends the retrieved passage as `content`; older payloads used `snippet`.
+  const snippet = source.content ?? source.snippet;
 
   // Meta line: only the parts we actually have.
   const meta = [parsed.client, parsed.type, parsed.date, parsed.version].filter(Boolean) as string[];
@@ -63,9 +65,9 @@ export function SourceCard({ source }: { source: Source }) {
           </p>
         )}
 
-        {source.snippet && (
+        {snippet && (
           <p className="mt-1 text-caption text-text-secondary leading-relaxed line-clamp-2">
-            {source.snippet}
+            {snippet}
           </p>
         )}
       </div>

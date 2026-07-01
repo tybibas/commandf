@@ -112,7 +112,7 @@ export default function DeckSurface({
             phases={DECK_PHASES}
           />
         )}
-        {job.phase === 'pending' && <PendingNote endpoint="POST /generate-deck" />}
+        {job.phase === 'pending' && <PendingNote endpoint="POST /generate" />}
         {job.phase === 'error' && (
           <ErrorPanel message={job.error || 'Generation failed.'} onRetry={generate} />
         )}

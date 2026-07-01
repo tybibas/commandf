@@ -30,13 +30,15 @@ export default function KnowledgePanel({
 
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [uploadMsg, setUploadMsg] = useState('');
+  const [uploadChunks, setUploadChunks] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const doUpload = async (f: File | null) => {
     if (!f) return;
-    setUploadState('uploading'); setUploadMsg(f.name);
+    setUploadState('uploading'); setUploadMsg(f.name); setUploadChunks(null);
     try {
-      await uploadDocument(f);
+      const res = await uploadDocument(f);
+      setUploadChunks(typeof res.chunks_added === 'number' ? res.chunks_added : null);
       setUploadState('done');
     } catch (e: any) {
       if (e instanceof EndpointPendingError) setUploadState('pending');
@@ -114,7 +116,11 @@ export default function KnowledgePanel({
           {uploadState === 'done' && (
             <div className="rounded-surface border border-border-light px-4 py-3.5 flex items-center gap-2.5">
               <CheckCircle2 className="w-4 h-4 text-success" aria-hidden />
-              <span className="text-body text-text-secondary">Uploaded — indexing in the background.</span>
+              <span className="text-body text-text-secondary">
+                {uploadChunks != null
+                  ? <>Added — {uploadChunks.toLocaleString()} passage{uploadChunks === 1 ? '' : 's'} indexed.</>
+                  : 'Uploaded — indexing in the background.'}
+              </span>
             </div>
           )}
           {uploadState === 'pending' && (

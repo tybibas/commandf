@@ -75,3 +75,31 @@ New surface: `src/components/commandf/Sidebar.tsx`. Rebuilt: `Composer.tsx` (com
 model popover), `Landing.tsx` (Claude hero), `CommandFPage.tsx` (rail layout, "+" menu, control
 relocation). All functionality preserved (send, sessions, model, knowledge upload/reindex/drive,
 deck/survey, sign-out). tsc + build clean; render-verified in both themes.
+
+---
+
+## Backend wiring pass (frontend ↔ FastAPI contracts)
+
+Aligned the API client + surfaces to the backend integration guide, and added the per-user
+threads UX (research-backed). Wired against contracts + verified on the mock harness; **live
+/chat verification deferred** (spends Anthropic credits; needs auth + the vector index).
+
+Contract fixes (`src/components/commandf/api.ts` + consumers):
+- Deck gen path → `POST /generate` + `GET /generate/{job_id}` (was `/generate-deck…`); `JobStatus`
+  accepts `done` as well as `complete` (`useJob.ts`) + a `progress` line; `DeckSurface` pending label updated.
+- `Source` shape extended (`content`, `file_path`, `chunk_index`); `SourceCard` reads `content ?? snippet`.
+- `uploadDocument` returns `chunks_added`; `KnowledgePanel` shows "Added — N passages indexed".
+
+Per-user threads (React 18, no new deps — manual optimistic + localStorage SWR-style cache):
+- **Instant sidebar:** seed the rail from a per-user localStorage cache (`sessionsCache.ts`, keyed by
+  JWT `sub`) on mount, then revalidate against `GET /sessions` (zero-flash). *ChatGPT/Claude pattern.*
+- **New chat = create-on-first-message** (implicit; no orphan empty threads). On the first `/chat`
+  response the new thread is optimistically inserted at the top of the rail (title = first message),
+  then reconciled with the server.
+- **Optimistic delete** with rollback-on-error + toast; cache updated in lockstep.
+- On not-signed-in, the cache is per-user-keyed so a different operator never sees another's list.
+
+Backend guidance produced (not implemented here — backend's job): `docs/BACKEND_SECURITY.md` —
+API-key secrecy (never in the Vite bundle), JWT+allowlist gating, per-user/global rate limits,
+prompt-caching/model-routing/token-budget cost controls, prompt-injection defense. The key stays
+server-side in Modal secrets; the frontend holds no secret and handles 401/403/429 gracefully.
