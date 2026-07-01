@@ -33,7 +33,7 @@ function withCitations(node: ReactNode, cite: CiteProps): ReactNode {
               type="button"
               onClick={() => onCiteClick(n)}
               aria-label={`Jump to source ${n}`}
-              className="align-super mx-px inline-flex items-baseline font-num text-micro font-medium leading-none text-brand rounded-sm px-0.5 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand transition-colors"
+              className="align-super mx-px inline-flex items-baseline font-num text-micro font-medium leading-none text-brand-ink rounded-sm px-0.5 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand transition-colors"
               style={{ transitionDuration: 'var(--motion-duration-fast)' }}
             >
               {n}
@@ -113,7 +113,7 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="text-brand hover:text-brand-hover underline underline-offset-2 decoration-brand/40 hover:decoration-brand transition-colors"
+      className="text-brand-ink hover:text-brand underline underline-offset-2 decoration-brand/40 hover:decoration-brand transition-colors"
       style={{ transitionDuration: 'var(--motion-duration-fast)' }}
     >
       {children}

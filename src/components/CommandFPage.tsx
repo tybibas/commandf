@@ -273,7 +273,7 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
   const docs = briefing?.knowledge?.doc_count ?? 0;
   const lastSync = briefing?.knowledge?.last_sync_at;
 
-  const logoSrc = isActionist ? '/actionist-logo.png' : undefined;
+  const logoSrc = isActionist ? '/actionist-logo.svg' : undefined;
 
   const paletteCommands: PaletteCommand[] = [
     { id: 'new', label: 'New chat', group: 'Actions', icon: Plus, keywords: 'start reset thread', run: newChat },

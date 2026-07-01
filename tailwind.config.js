@@ -14,6 +14,7 @@ export default {
         'accent-muted': 'var(--color-accent-muted)',
         'brand': 'var(--color-brand)',
         'brand-hover': 'var(--color-brand-hover)',
+        'brand-ink': 'var(--color-brand-ink)',
         'brand-soft': 'var(--color-brand-soft)',
         'text-primary': 'var(--color-text-primary)',
         'text-secondary': 'var(--color-text-secondary)',

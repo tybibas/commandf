@@ -22,13 +22,16 @@
   --color-accent-pressed: #100E0C;
   --color-accent-muted: rgba(42, 39, 36, 0.07);
 
-  /* Brand accent — Actionist clay-orange. Used SPARINGLY (workspace identity,
-     active-nav marker, links, citation highlight) the way Claude uses its clay
-     or Perplexity its ink. Primary actions stay neutral ink; this is a seasoning,
-     not a fill. Tunable: swap these three to re-brand for another tenant. */
-  --color-brand: #C15C2E;
-  --color-brand-hover: #A54D22;
-  --color-brand-soft: rgba(193, 92, 46, 0.10);
+  /* Brand accent — the Actionist orange (#EF8E07, sampled from their site). Used
+     SPARINGLY (active-nav marker, citation highlight, small text accents) the way
+     Claude uses its clay. Primary actions stay neutral ink; this is a seasoning.
+     `--color-brand` is the true vivid orange for non-text accents (markers, rings,
+     icons); `--color-brand-ink` is a deeper AA-contrast variant for small TEXT
+     (links, citation numerals) so it stays legible on the cream. Tunable per tenant. */
+  --color-brand: #EF8E07;
+  --color-brand-hover: #D97E05;
+  --color-brand-ink: #9E5807;
+  --color-brand-soft: rgba(239, 142, 7, 0.12);
 
   /* Text — warm near-black ink over the cream, not cool gray */
   --color-text-primary: #26231F;
@@ -121,10 +124,11 @@
   --color-accent-pressed: #D1D5DB;
   --color-accent-muted: rgba(229, 231, 235, 0.12);
 
-  /* Brand accent — Actionist clay-orange, lifted for contrast on charcoal */
-  --color-brand: #E38A56;
-  --color-brand-hover: #EDA074;
-  --color-brand-soft: rgba(227, 138, 86, 0.15);
+  /* Brand accent — Actionist orange, lifted for contrast on charcoal */
+  --color-brand: #F5A63C;
+  --color-brand-hover: #F7B155;
+  --color-brand-ink: #EBA45C;
+  --color-brand-soft: rgba(245, 166, 60, 0.16);
 
   /* Light Text for Dark Mode */
   --color-text-primary: #E5E7EB;
