@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Plus, Database, Upload, Presentation, Table2, Search, GitCompare, MessageSquare,
+  Plus, Database, Upload, Presentation, Table2, Search, GitCompare, MessageSquare, Wand2, Loader2,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { useClientStrategy } from '../contexts/ClientStrategyContext';
@@ -9,8 +9,10 @@ import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChat, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentToken, currentUserId, NotSignedInError,
-  uploadDocument, uploadDocumentStatus, EndpointPendingError,
+  uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt,
 } from './commandf/api';
+import { useDictation } from '../hooks/useDictation';
+import MicButton from './commandf/MicButton';
 import { readSessionsCache, writeSessionsCache } from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
 import Composer from './commandf/Composer';
@@ -98,6 +100,29 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
       toast.updateToast(id, e instanceof EndpointPendingError ? 'Upload is momentarily unavailable — try the knowledge panel.' : (e?.message || 'Upload failed.'), 'error');
     }
   };
+  // Voice dictation feeds the composer live; "Optimize" rewrites the notes in place.
+  const [optimizing, setOptimizing] = useState(false);
+  const dictBaseRef = useRef('');
+  const dictation = useDictation({ onTranscript: (t) => setInput(dictBaseRef.current + t) });
+  const handleMic = () => {
+    if (dictation.isListening) { dictation.stop(); return; }
+    dictBaseRef.current = input.trim() ? input.replace(/\s*$/, '') + ' ' : '';
+    dictation.start();
+  };
+  const optimize = async () => {
+    const text = input.trim();
+    if (!text || optimizing || dictation.isListening) return;
+    setOptimizing(true);
+    try {
+      const { optimized } = await optimizePrompt(text);
+      if (optimized && optimized.trim()) { setInput(optimized.trim()); setFocusKey((k) => k + 1); }
+    } catch {
+      toast.error('Could not optimize your prompt — try again.');
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Stable user id for keying the local sessions cache (avoids stale closures).
   const userIdRef = useRef<string | null>(null);
@@ -172,6 +197,14 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     window.addEventListener('keydown', onEsc);
     return () => window.removeEventListener('keydown', onEsc);
   }, [showPlus]);
+
+  // Stop dictation on Escape.
+  useEffect(() => {
+    if (!dictation.isListening) return;
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') dictation.stop(); };
+    window.addEventListener('keydown', onEsc);
+    return () => window.removeEventListener('keydown', onEsc);
+  }, [dictation.isListening, dictation.stop]);
 
   // ⌘K / Ctrl+K opens the command palette (jump to a thread, new chat, tools).
   useEffect(() => {
@@ -367,15 +400,18 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
           </>
         )}
       </div>
+      <MicButton isListening={dictation.isListening} supported={dictation.supported} error={dictation.error} onClick={handleMic} />
       <button
         type="button"
-        onClick={() => setShowKnowledge(true)}
-        className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-pill border border-border-light text-caption text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors ${MOTION} ${FOCUS}`}
-        title="Search scope — the firm's knowledge base"
+        onClick={optimize}
+        disabled={!input.trim() || optimizing || dictation.isListening}
+        className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-pill border border-border-light text-caption text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-40 disabled:pointer-events-none`}
+        title="Clean up my prompt — restructure your notes into a sharp, well-formed prompt before sending"
       >
-        <Database className="w-3.5 h-3.5 text-text-muted" strokeWidth={1.75} />
-        Knowledge
-        {docs > 0 && <span className="font-num text-micro text-text-muted tabular-nums">{docs.toLocaleString()}</span>}
+        {optimizing
+          ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" aria-hidden />
+          : <Wand2 className="w-3.5 h-3.5 text-brand-ink" strokeWidth={1.75} aria-hidden />}
+        {optimizing ? 'Optimizing…' : 'Optimize'}
       </button>
     </div>
   );

@@ -213,6 +213,16 @@ export async function fetchHistory(sessionId: string): Promise<Message[]> {
   }));
 }
 
+/** Rewrite the user's raw/dictated notes into a well-structured prompt, in place,
+ * before sending. Cheap single-shot call on the backend (no RAG, no side effects). */
+export async function optimizePrompt(text: string): Promise<{ optimized: string }> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/optimize-prompt`, {
+    method: 'POST', headers: await authHeaders(), body: JSON.stringify({ text }),
+  });
+  return json<{ optimized: string }>(res);
+}
+
 export async function sendChat(
   message: string, model: string, sessionId: string | null,
 ): Promise<ChatResponse> {

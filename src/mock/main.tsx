@@ -33,6 +33,10 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (path.includes('/sessions')) return jsonRes({ sessions: MOCK_SESSIONS });
     if (path.includes('/briefing')) return jsonRes(MOCK_BRIEFING);
     if (path.includes('/history')) return jsonRes({ history: MOCK_HISTORY });
+    if (path.includes('/optimize-prompt')) {
+      await new Promise((r) => setTimeout(r, 500));
+      return jsonRes({ optimized: 'Build a board/SteerCo update deck for the Q3 value-creation review.\n\nAudience: the board (partner-level, answer-first).\nDecision to drive: approve the remaining structural change.\nCover: quick wins banked to date, the structural decision and its de-risking, and the two tracked risks with mitigations.' });
+    }
     if (path.includes('/chat')) {
       await new Promise((r) => setTimeout(r, 650)); // let the typing indicator show
       return jsonRes(MOCK_CHAT_RESPONSE);
