@@ -43,9 +43,11 @@ export const MOCK_BRIEFING: Briefing = {
 };
 
 export const MOCK_SOURCES: Source[] = [
-  { n: 1, file_name: 'Cardinal Mutual — Engagement Retrospective.pdf', snippet: 'The repositioning hinged on reframing the mutual’s member-first mandate as a growth thesis rather than a constraint, which unlocked the mid-market segment.', similarity: 0.91 },
-  { n: 2, file_name: 'Proof Points & Case Studies Library.docx', snippet: 'Across five engagements the single most reusable lever was sequencing quick operational wins before the structural change, buying credibility for the harder moves.', similarity: 0.87 },
-  { n: 3, file_name: 'Stonepoint Repositioning — Board Deck.pptx', snippet: 'Board alignment was reached by tying every workstream to one North-Star metric, cutting the reporting surface from nine dashboards to one.', similarity: 0.82 },
+  { n: 1, file_id: 'doc-cardinal', file_name: 'Cardinal Mutual — Engagement Retrospective.pdf', content: 'The repositioning hinged on reframing the mutual’s member-first mandate as a growth thesis rather than a constraint, which opened the mid-market segment.', similarity: 0.91, chunk_index: 12 },
+  // Second passage from the SAME document — exercises group-by-document + "N passages".
+  { n: 4, file_id: 'doc-cardinal', file_name: 'Cardinal Mutual — Engagement Retrospective.pdf', content: 'Sequencing mattered: three quick operational wins in the first 45 days bought the credibility to propose the harder structural change without board resistance.', similarity: 0.84, chunk_index: 27 },
+  { n: 2, file_id: 'doc-proof', file_name: 'Proof Points & Case Studies Library.docx', content: 'Across five engagements the single most reusable lever was sequencing quick operational wins before the structural change, buying credibility for the harder moves.', similarity: 0.87, chunk_index: 3 },
+  { n: 3, file_id: 'doc-stonepoint', file_name: 'Stonepoint Repositioning — Board Deck.pptx', content: 'Board alignment was reached by tying every workstream to one North-Star metric, cutting the reporting surface from nine dashboards to one.', similarity: 0.82, chunk_index: 8 },
 ];
 
 const MOCK_ANSWER_MD = `Across the Cardinal Mutual and Stonepoint work, the pattern that repeats is **sequencing credibility before structure**.

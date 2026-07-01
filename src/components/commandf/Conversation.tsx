@@ -4,7 +4,7 @@ import CommandFMarkdown from '../CommandFMarkdown';
 import { SourceList } from './SourceCard';
 import type { Message } from './api';
 
-function MessageRow({ m }: { m: Message }) {
+function MessageRow({ m, onReuse }: { m: Message; onReuse?: (prompt: string) => void }) {
   if (m.role === 'user') {
     return (
       <div className="flex justify-end animate-fade-in">
@@ -32,7 +32,7 @@ function MessageRow({ m }: { m: Message }) {
           <CommandFMarkdown content={m.content} />
         </>
       )}
-      {m.sources && m.sources.length > 0 && <SourceList sources={m.sources} />}
+      {m.sources && m.sources.length > 0 && <SourceList sources={m.sources} onReuse={onReuse} />}
     </div>
   );
 }
@@ -57,7 +57,7 @@ function TypingIndicator() {
 }
 
 /** The scrolling transcript. Auto-sticks to the bottom on new content. */
-export default function Conversation({ messages, sending }: { messages: Message[]; sending: boolean }) {
+export default function Conversation({ messages, sending, onReuse }: { messages: Message[]; sending: boolean; onReuse?: (prompt: string) => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export default function Conversation({ messages, sending }: { messages: Message[
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 scrollbar-thin">
       <div className="max-w-prose-tight mx-auto space-y-8">
         {messages.map((m, i) => (
-          <MessageRow key={`${m.role}-${i}-${m.content.length}`} m={m} />
+          <MessageRow key={`${m.role}-${i}-${m.content.length}`} m={m} onReuse={onReuse} />
         ))}
         {sending && <TypingIndicator />}
       </div>

@@ -226,6 +226,13 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     setFocusKey((k) => k + 1);
   }, []);
 
+  // Reuse-a-source: prefill the composer in place (keep the current surface so a
+  // reuse action from a chat answer fills the follow-up box, not a jump home).
+  const prefillComposer = useCallback((text: string) => {
+    setInput(text);
+    setFocusKey((k) => k + 1);
+  }, []);
+
   if (notConfigured) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
@@ -342,7 +349,7 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (
           <>
-            <Conversation messages={messages} sending={sending} />
+            <Conversation messages={messages} sending={sending} onReuse={prefillComposer} />
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>
             </div>

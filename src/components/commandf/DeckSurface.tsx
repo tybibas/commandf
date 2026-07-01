@@ -60,43 +60,55 @@ export default function DeckSurface({
         />
 
         <label className="block">
-          <span className="text-[11px] uppercase tracking-[0.06em] text-text-muted mb-1.5 block">
-            Your notes
+          <span className="eyebrow text-text-muted mb-1.5 block">
+            Describe the deck
           </span>
           <textarea
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            rows={6}
+            rows={7}
             placeholder="e.g. 90-day operating-model review for a mid-market insurer CFO — pull our Cardinal Mutual work, lead with the value-creation thesis."
             disabled={busy}
-            className={`mt-1 w-full resize-y max-h-[50vh] rounded-surface border border-border bg-bg-secondary px-3.5 py-2.5 text-[14px] text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
+            className={`mt-1 w-full resize-y max-h-[50vh] rounded-surface border border-border bg-bg-secondary px-3.5 py-3 text-[14px] text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
           />
-          <p className="mt-1.5 text-caption text-text-muted">{EXAMPLE}</p>
+          <p className="mt-2 text-caption text-text-muted leading-relaxed">{EXAMPLE}</p>
         </label>
 
-        <div className="mt-4">
-          <p className="text-[11px] uppercase tracking-[0.06em] text-text-muted mb-2">Type</p>
-          <div className="flex flex-wrap gap-2">
-            {TYPES.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setType(t.id)}
-                disabled={busy}
-                className={[
-                  'px-3 py-1.5 rounded-control text-caption border transition-colors', MOTION, FOCUS,
-                  type === t.id
-                    ? 'bg-bg-tertiary border-border-hover text-text-primary'
-                    : 'bg-transparent border-border-light text-text-secondary hover:border-border-hover',
-                ].join(' ')}
-              >
-                {t.label}
-              </button>
-            ))}
+        <div className="mt-6">
+          <p className="eyebrow text-text-muted mb-2">Deliverable type</p>
+          {/* One clean segmented control — a single quiet track, the active
+              segment lifted onto an elevated surface. */}
+          <div
+            role="radiogroup"
+            aria-label="Deliverable type"
+            className="inline-flex flex-wrap gap-1 p-1 rounded-control border border-border-light bg-bg-secondary/60"
+          >
+            {TYPES.map((t) => {
+              const on = type === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setType(t.id)}
+                  disabled={busy}
+                  className={[
+                    'px-3 py-1.5 rounded-[7px] text-caption font-medium transition-colors disabled:opacity-40',
+                    MOTION, FOCUS,
+                    on
+                      ? 'bg-bg-elevated text-text-primary shadow-float'
+                      : 'bg-transparent text-text-secondary hover:text-text-primary',
+                  ].join(' ')}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="mt-6">
+        <div className="mt-7">
           <button
             onClick={generate}
             disabled={!brief.trim() || busy}
@@ -110,6 +122,7 @@ export default function DeckSurface({
           <RunningPanel
             label="Building your deck…"
             phases={DECK_PHASES}
+            progress={job.result?.progress}
           />
         )}
         {job.phase === 'pending' && <PendingNote endpoint="POST /generate" />}

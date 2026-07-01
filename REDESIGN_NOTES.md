@@ -103,3 +103,14 @@ Backend guidance produced (not implemented here — backend's job): `docs/BACKEN
 API-key secrecy (never in the Vite bundle), JWT+allowlist gating, per-user/global rate limits,
 prompt-caching/model-routing/token-budget cost controls, prompt-injection defense. The key stays
 server-side in Modal secrets; the frontend holds no secret and handles 401/403/429 gracefully.
+
+---
+
+## Frontier iteration — actionable sources + flagship deck
+
+Source intelligence (`SourceCard.tsx`, `util.ts`, wired via `Conversation.tsx`/`CommandFPage.tsx`):
+- **Overlap dedupe:** retrieved passages are grouped by document (`groupSources` — by file_id → file_name → link). The panel reads "N documents", and a document that contributed multiple passages shows a quiet "N passages" expander (with chunk_index) instead of repeating the same file. *Removes RAG's visual noise.*
+- **Actionable reuse:** each document card has a muted "⋯" menu — **Use as template / Draft from this / Compare to current** — that composes an editable, framework-reuse prompt (`reusePrompt`) referencing the parsed deliverable, and drops it into the composer in place (`onReuse` → `prefillComposer`, current surface preserved). A citation becomes a next move. *The suggestion text gets smarter once the backend can generate it; the affordance ships now.*
+
+Deck generation (`DeckSurface.tsx`, `generationUI.tsx`):
+- Refined flow (eyebrow labels, roomier brief), the deliverable types as one **segmented control**, live backend `progress` piped into RunningPanel (authoritative when present, canned phases as fallback), a stronger result state (full-width **Download .pptx** primary + slide-thumbnail rail), and an honest, premium **pending/preview** state for the not-yet-live endpoint.
