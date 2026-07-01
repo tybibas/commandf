@@ -176,12 +176,10 @@ export function groupSources(sources: Source[]): GroupedSource[] {
  * References the parsed deliverable title so the reuse reads specific, not
  * generic. Human voice, no em dashes.
  */
-export function reusePrompt(source: Source, action: 'template' | 'draft' | 'compare'): string {
+export function reusePrompt(source: Source, action: 'draft' | 'compare'): string {
   const p = parseDeliverableName(source.file_name);
   const title = p.client || p.title || 'this deliverable';
   switch (action) {
-    case 'template':
-      return `Use "${title}" as a template. Adapt its framework and structure for my current engagement, keep what transfers, and flag what does not.`;
     case 'draft':
       return `Draft the opening of a new deliverable reusing the approach and framing from "${title}".`;
     case 'compare':
