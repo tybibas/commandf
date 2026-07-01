@@ -5,6 +5,10 @@ import { CommandFPage } from '../components/CommandFPage';
 import { CommandFLogin } from '../standalone/CommandFLogin';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
 
+// Mock user identity for the dev harness (matches the stubbed getSession in main.tsx).
+const MOCK_USER_NAME = 'Ty Bibas';
+const MOCK_USER_EMAIL = 'ty@actionistconsulting.com';
+
 export function HarnessRoot({ view }: { view: string }) {
   if (view === 'login') {
     return <AuthProvider><CommandFLogin /></AuthProvider>;
@@ -18,7 +22,11 @@ export function HarnessRoot({ view }: { view: string }) {
     <AuthProvider>
       <ClientStrategyProvider>
         <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
-          <CommandFPage />
+          <CommandFPage
+            userName={MOCK_USER_NAME}
+            userEmail={MOCK_USER_EMAIL}
+            onSignOut={() => console.info('[harness] sign-out triggered')}
+          />
         </div>
       </ClientStrategyProvider>
     </AuthProvider>

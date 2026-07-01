@@ -50,9 +50,19 @@ function greetingForNow(): string {
   return 'Good evening';
 }
 
-/** `headerExtra` is the sign-out control; in the new IA it lives at the bottom
- * of the sidebar (the account slot), not in a top header. */
-export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } = {}) {
+/** Structured account props replace the opaque `headerExtra` ReactNode.
+ * The account bar is owned by Sidebar and adapts to the collapsed state. */
+export function CommandFPage({
+  userName,
+  userEmail,
+  planLabel,
+  onSignOut,
+}: {
+  userName?: string;
+  userEmail?: string;
+  planLabel?: string;
+  onSignOut?: () => void;
+} = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
@@ -472,7 +482,10 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
         docCount={docs}
         contextLabel={contextLabel}
         logoSrc={logoSrc}
-        account={headerExtra}
+        userName={userName}
+        userEmail={userEmail}
+        planLabel={planLabel}
+        onSignOut={onSignOut}
       />
 
       <div

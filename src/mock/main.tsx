@@ -15,7 +15,16 @@ import {
 
 // ── Stub the Supabase session (authHeaders/currentToken succeed) ─────────────
 (supabase.auth as any).getSession = async () => ({
-  data: { session: { access_token: 'mock-token', user: { id: 'mock-user' } } },
+  data: {
+    session: {
+      access_token: 'mock-token',
+      user: {
+        id: 'mock-user',
+        email: 'ty@actionistconsulting.com',
+        user_metadata: { full_name: 'Ty Bibas' },
+      },
+    },
+  },
   error: null,
 });
 

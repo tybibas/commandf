@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { LogOut } from 'lucide-react';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { ClientStrategyProvider } from '../contexts/ClientStrategyContext';
 import { isSupabaseConfigured } from '../lib/supabase';
@@ -7,28 +6,13 @@ import { CommandFPage } from '../components/CommandFPage';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
 import { CommandFLogin } from './CommandFLogin';
 
-const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
-
 function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="min-h-screen bg-bg-primary flex items-center justify-center px-4">{children}</div>;
 }
 
-function SignOutButton() {
-  const { signOut } = useAuth();
-  return (
-    <button
-      onClick={() => signOut()}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-control text-body border border-border-light text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors duration-fast ease-out-expo ${FOCUS}`}
-      title="Sign out"
-    >
-      <LogOut className="w-3.5 h-3.5" /> Sign out
-    </button>
-  );
-}
-
 /** Auth gate — mirrors the dashboard's App.tsx ordering exactly. */
 function Gate() {
-  const { user, session, loading, profileLoading, mustChangePassword } = useAuth();
+  const { user, session, loading, profileLoading, mustChangePassword, signOut } = useAuth();
 
   // Resilience: if the session check / profile fetch hasn't resolved in 10s
   // (e.g. a cold or degraded Supabase project timing out), stop spinning
@@ -57,9 +41,20 @@ function Gate() {
   if (session && mustChangePassword) return <SetPasswordScreen />;
   if (!user) return <CommandFLogin />;
 
+  // Display name from auth metadata (full_name), email as the final fallback.
+  const userName: string | undefined =
+    (user as any)?.user_metadata?.full_name || undefined;
+
+  // No planLabel: the workspace ("Actionist") already shows as the footer
+  // wordmark, so the profile subtitle falls back to the email — name + email,
+  // not name + a duplicate workspace label.
   return (
     <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
-      <CommandFPage headerExtra={<SignOutButton />} />
+      <CommandFPage
+        userName={userName}
+        userEmail={user?.email ?? undefined}
+        onSignOut={signOut}
+      />
     </div>
   );
 }
