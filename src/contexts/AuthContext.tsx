@@ -50,13 +50,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
-      // TOKEN_REFRESHED fires when the browser tab regains focus.
-      // If we already have this user loaded, skip the redundant profile
-      // fetch — otherwise a new object reference from setUser() causes
-      // every useEffect keyed on `user` to re-fire across all pages,
-      // resetting scanning spinners and other ephemeral state.
-      if (event === 'TOKEN_REFRESHED' && session?.user && loadedUserIdRef.current === session.user.id) {
-        // Session token updated but user hasn't changed — just update session silently.
+      // Supabase re-validates the session when the browser tab regains
+      // focus/visibility (GoTrueClient._recoverAndRefresh). Depending on how
+      // close the JWT is to expiry it emits EITHER `TOKEN_REFRESHED` (it
+      // refreshed the token) OR `SIGNED_IN` (session still valid, re-notified) —
+      // BOTH carry the SAME already-loaded user. If we react to those by calling
+      // loadUserProfile() we flip `profileLoading`, which unmounts CommandFPage
+      // behind the Gate spinner (chat blanks) and forces a slow refetch on
+      // remount; a fresh setUser() object reference also cascades every
+      // useEffect keyed on `user`. So: when the user id is UNCHANGED, treat the
+      // event as a silent session update and do NOT re-fetch the profile.
+      const isFocusRevalidation = event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN';
+      if (isFocusRevalidation && session?.user && loadedUserIdRef.current === session.user.id) {
+        // Same user, token/session just re-validated — update the session token
+        // silently. No loadUserProfile → no profileLoading flip → no unmount.
         setSession(session);
         return;
       }
