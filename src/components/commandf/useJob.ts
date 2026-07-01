@@ -36,7 +36,7 @@ export function useJob(poll: (jobId: string) => Promise<JobStatus>) {
         try {
           const s = await poll(job_id);
           setResult(s);
-          if (s.status === 'complete') { clear(); setPhase('complete'); }
+          if (s.status === 'complete' || s.status === 'done') { clear(); setPhase('complete'); }
           else if (s.status === 'error') { clear(); setPhase('error'); setError(s.error || 'Generation failed.'); }
           else if (Date.now() > deadline) { clear(); setPhase('error'); setError('Timed out — try again.'); }
         } catch (e: any) {

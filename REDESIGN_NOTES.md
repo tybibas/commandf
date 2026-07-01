@@ -57,3 +57,127 @@ the real surfaces with fixtures and no network/credentials:
 
 Every surface was screenshotted in both themes and compared to the references; `npx tsc --noEmit`
 and `npm run build` are clean.
+
+---
+
+## IA rethink v2 — left rail + composer command-center
+
+Restructured the information architecture (not a recolor). Where things live now:
+- **New chat / Recent history / account** → persistent **left sidebar** (collapsible 264↔56px).
+  *ChatGPT + Claude + Perplexity + Harvey rails.*
+- **Model selector** → **inline in the composer** control row. *Claude "Opus 4.8" + Perplexity "Model".*
+- **Attachments / Build-a-deck / Survey** → behind the composer **"+"** menu. *ChatGPT "+" + Harvey Files.*
+- **Knowledge base** → sidebar nav item + a **Knowledge scope chip** inside the composer. *Harvey Sources/Vault.*
+- **Top header** → removed; canvas is a calm centered hero: workspace chip + time-aware **serif greeting**
+  ("Good evening") + quick-action chips. *Claude "Evening, Ty".*
+
+New surface: `src/components/commandf/Sidebar.tsx`. Rebuilt: `Composer.tsx` (command card + inline
+model popover), `Landing.tsx` (Claude hero), `CommandFPage.tsx` (rail layout, "+" menu, control
+relocation). All functionality preserved (send, sessions, model, knowledge upload/reindex/drive,
+deck/survey, sign-out). tsc + build clean; render-verified in both themes.
+
+---
+
+## Backend wiring pass (frontend ↔ FastAPI contracts)
+
+Aligned the API client + surfaces to the backend integration guide, and added the per-user
+threads UX (research-backed). Wired against contracts + verified on the mock harness; **live
+/chat verification deferred** (spends Anthropic credits; needs auth + the vector index).
+
+Contract fixes (`src/components/commandf/api.ts` + consumers):
+- Deck gen path → `POST /generate` + `GET /generate/{job_id}` (was `/generate-deck…`); `JobStatus`
+  accepts `done` as well as `complete` (`useJob.ts`) + a `progress` line; `DeckSurface` pending label updated.
+- `Source` shape extended (`content`, `file_path`, `chunk_index`); `SourceCard` reads `content ?? snippet`.
+- `uploadDocument` returns `chunks_added`; `KnowledgePanel` shows "Added — N passages indexed".
+
+Per-user threads (React 18, no new deps — manual optimistic + localStorage SWR-style cache):
+- **Instant sidebar:** seed the rail from a per-user localStorage cache (`sessionsCache.ts`, keyed by
+  JWT `sub`) on mount, then revalidate against `GET /sessions` (zero-flash). *ChatGPT/Claude pattern.*
+- **New chat = create-on-first-message** (implicit; no orphan empty threads). On the first `/chat`
+  response the new thread is optimistically inserted at the top of the rail (title = first message),
+  then reconciled with the server.
+- **Optimistic delete** with rollback-on-error + toast; cache updated in lockstep.
+- On not-signed-in, the cache is per-user-keyed so a different operator never sees another's list.
+
+Backend guidance produced (not implemented here — backend's job): `docs/BACKEND_SECURITY.md` —
+API-key secrecy (never in the Vite bundle), JWT+allowlist gating, per-user/global rate limits,
+prompt-caching/model-routing/token-budget cost controls, prompt-injection defense. The key stays
+server-side in Modal secrets; the frontend holds no secret and handles 401/403/429 gracefully.
+
+---
+
+## Frontier iteration — actionable sources + flagship deck
+
+Source intelligence (`SourceCard.tsx`, `util.ts`, wired via `Conversation.tsx`/`CommandFPage.tsx`):
+- **Overlap dedupe:** retrieved passages are grouped by document (`groupSources` — by file_id → file_name → link). The panel reads "N documents", and a document that contributed multiple passages shows a quiet "N passages" expander (with chunk_index) instead of repeating the same file. *Removes RAG's visual noise.*
+- **Actionable reuse:** each document card has a muted "⋯" menu — **Use as template / Draft from this / Compare to current** — that composes an editable, framework-reuse prompt (`reusePrompt`) referencing the parsed deliverable, and drops it into the composer in place (`onReuse` → `prefillComposer`, current surface preserved). A citation becomes a next move. *The suggestion text gets smarter once the backend can generate it; the affordance ships now.*
+
+Deck generation (`DeckSurface.tsx`, `generationUI.tsx`):
+- Refined flow (eyebrow labels, roomier brief), the deliverable types as one **segmented control**, live backend `progress` piped into RunningPanel (authoritative when present, canned phases as fallback), a stronger result state (full-width **Download .pptx** primary + slide-thumbnail rail), and an honest, premium **pending/preview** state for the not-yet-live endpoint.
+
+---
+
+## Frontier iteration 2 — brand, interactive citations, ⌘K, source→deck
+
+- **Actionist brand:** added a tunable clay-orange accent token (`--color-brand`, light+dark) used
+  sparingly (citation numerals, active-thread marker, links, highlight) — Claude-orange restraint,
+  primary actions stay ink. The Actionist wordmark (`public/actionist-logo.png`) anchors the
+  workspace identity (landing chip + sidebar footer), auto-inverted on the dark tenant. Shows only
+  in the Actionist context; operator context keeps a quiet chip.
+- **Interactive citations:** `[n]` in answers render as orange citation chips; clicking scrolls to
+  and pulses the matching source card (brand ring). Opt-in, so other markdown callers are unaffected.
+- **Command palette (⌘K):** new `CommandPalette.tsx` — new chat / knowledge / deck / survey +
+  jump-to-recent-thread; keyboard-first, brand-highlighted.
+- **Source→deck handoff:** "Build a deck from these sources" under an answer opens the deck surface
+  seeded with the originating question.
+- Backend follow-ups captured in `docs/BACKEND_TODOS.md` (incl. cross-engagement `synthesis` field,
+  which needs the backend LLM — spec'd, not faked).
+
+---
+
+## Deck surface — two-panel workflow redesign
+
+Replaced the grey-text stack with the reference two-panel workflow card (distilled from Claude
+Cowork's Three-statement model / Due diligence / Candidates Sourcer):
+- **Left rail:** deck icon, serif "Build a deck", one-line description, and 3 capability bullets
+  pinned to the bottom.
+- **Right rail — only the inputs the workflow needs** (grounded in POST /generate {request,
+  deliverable_type}, no invented fields): deliverable-type chips + a single Brief field with one
+  targeted example ("Use an example" inserts it) and one line of guidance on what a good brief
+  names. Primary "Generate deck" anchored bottom-right, muted until the brief has content.
+- **Deliverable types** grounded in what the engine produces: Auto-detect, Proposal, Engagement
+  recap, POV memo, Case study. **Survey compendium** is surfaced as a chip but routes to its own
+  tool (spreadsheet upload) via onOpenSurvey → the survey surface (↗ affordance).
+- Generation/pending/result states render in the right rail; left rail stays as context.
+
+---
+
+## Deck surface — three levers (grounded types, dynamic examples, chunked builds)
+
+Researched Actionist's indexed corpus (`commandf_document_chunks`, title-frequency) to ground this.
+- **Deliverable types** rebuilt from what the firm actually produces: Auto-detect, Board / SteerCo
+  (the #1 category), Diagnostic (the "analysis deck"), Strategy, Market landscape, Due diligence,
+  Engagement recap, Proposal. (Dropped rare POV/case-study.)
+- **Dynamic example (lever 1):** each type carries its own true-to-life brief; selecting a type
+  swaps the brief placeholder + "Use an example" insert to match that deck's natural query.
+- **Scope + slide count (lever 3):** a "Full deck | In sections" toggle gates the complexity.
+  Full deck adds a Length selector (Auto/~10/~15/~20). In sections: a Slides selector (10/15/20),
+  a "The full deck" field (context that carries into every section), and a "This section · slides
+  X-Y" field; the primary reads "Generate slides X-Y", and the result offers "Build slides Y+1-…"
+  which advances the range while keeping the full-deck context (in-session continuity; full
+  cross-session resume needs the backend deck-project entity spec'd in docs/BACKEND_TODOS.md).
+- Survey compendium moved to a quiet text link that routes to its own tool (declutters the chips).
+
+---
+
+## Deck/Survey — custom length, section pacing, aligned survey UI
+
+- **Custom slide count:** full-deck Length adds a "Custom" chip → inline number stepper (any length,
+  not capped at 20); per-section Slides adds a Custom field too.
+- **Section pacing:** in-sections mode gains an optional "of ~N total" input, so the agent knows it
+  is building slides 1-10 of ~60 (setup-heavy) vs 1-10 of ~18 — carried into the range label + request.
+- **Example wording:** made client-agnostic (dropped mock client names) so each type reads as a
+  universal template.
+- **Survey compendium** rebuilt onto the same two-panel card as Build-a-deck (left rail icon +
+  title + capabilities; right rail dropzone + optional title + bottom-right primary), so the two
+  tools feel like one family. The deck's "Open that tool" link routes here.

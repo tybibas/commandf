@@ -1,5 +1,7 @@
 // Command F — pure presentation helpers (no I/O, easy to unit-test).
 
+import type { Source } from './api';
+
 export function clientLabel(slug: string): string {
   return slug.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -122,4 +124,67 @@ export function confidenceBand(similarity?: number): 'High' | 'Medium' | 'Low' |
   if (similarity >= 0.7) return 'High';
   if (similarity >= 0.45) return 'Medium';
   return 'Low';
+}
+
+/**
+ * One document, with every passage RAG retrieved from it. RAG returns chunks,
+ * often several from the same file — grouping collapses that visual overlap into
+ * one card that reads as "evidence from N documents", not "N chunks".
+ */
+export type GroupedSource = {
+  key: string;                 // stable group key (file_id ?? file_name)
+  file_name: string;
+  file_id?: string;
+  link?: string;               // first passage that carried a link, if any
+  topSimilarity?: number;      // highest similarity across passages (the card's band)
+  passages: Source[];          // every passage, best-first
+  n?: number;                  // lowest citation index in the group (for the badge)
+};
+
+/**
+ * Group retrieved sources by document. Preserves first-seen document order (so
+ * the most relevant document, which RAG returns first, stays on top) and orders
+ * each group's passages best-first by similarity. Nothing is invented — every
+ * field is read straight from the source rows.
+ */
+export function groupSources(sources: Source[]): GroupedSource[] {
+  const groups = new Map<string, GroupedSource>();
+  for (const s of sources) {
+    if (!s.file_name && !s.link) continue;
+    const key = s.file_id ?? s.file_name ?? s.link ?? '';
+    let g = groups.get(key);
+    if (!g) {
+      g = { key, file_name: s.file_name, file_id: s.file_id, passages: [] };
+      groups.set(key, g);
+    }
+    g.passages.push(s);
+    if (!g.link && s.link) g.link = s.link;
+    if (typeof s.similarity === 'number' && !isNaN(s.similarity)) {
+      g.topSimilarity = Math.max(g.topSimilarity ?? -Infinity, s.similarity);
+    }
+    if (typeof s.n === 'number') g.n = g.n === undefined ? s.n : Math.min(g.n, s.n);
+  }
+  const rank = (v?: number) => (typeof v === 'number' && !isNaN(v) ? v : -Infinity);
+  for (const g of groups.values()) {
+    g.passages.sort((a, b) => rank(b.similarity) - rank(a.similarity));
+  }
+  return Array.from(groups.values());
+}
+
+/**
+ * Build an editable prompt that turns a citation into a consultant's next move.
+ * References the parsed deliverable title so the reuse reads specific, not
+ * generic. Human voice, no em dashes.
+ */
+export function reusePrompt(source: Source, action: 'template' | 'draft' | 'compare'): string {
+  const p = parseDeliverableName(source.file_name);
+  const title = p.client || p.title || 'this deliverable';
+  switch (action) {
+    case 'template':
+      return `Use "${title}" as a template. Adapt its framework and structure for my current engagement, keep what transfers, and flag what does not.`;
+    case 'draft':
+      return `Draft the opening of a new deliverable reusing the approach and framing from "${title}".`;
+    case 'compare':
+      return `Compare the approach in "${title}" with my current situation. Tell me what applies directly, what needs to change, and why.`;
+  }
 }

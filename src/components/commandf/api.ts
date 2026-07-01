@@ -2,9 +2,9 @@
 //
 // Thin wrapper over the Modal FastAPI service. Auth pattern (Supabase JWT as a
 // Bearer token) is lifted verbatim from the original CommandFPage. Every shape
-// here is documented in execution/commandf/UI_ENDPOINT_CONTRACTS.md — the three
-// `*Stub` endpoints (deck / survey / upload) are not live yet and throw a typed
-// NotImplemented so their surfaces can render an honest "preview" state.
+// here is documented in execution/commandf/UI_ENDPOINT_CONTRACTS.md. All
+// endpoints (chat, deck, survey, upload) are live; the EndpointPendingError path
+// is a graceful fallback for a 404/501 (backend unreachable), not a "coming soon".
 
 import { supabase } from '../../lib/supabase';
 
@@ -16,7 +16,12 @@ export type Source = {
   n?: number;
   file_name: string;
   file_id?: string;
+  file_path?: string;
+  chunk_index?: number;
   link?: string;
+  // The backend sends the retrieved passage as `content`; older payloads used
+  // `snippet`. Accept either — the UI reads `content ?? snippet`.
+  content?: string;
   snippet?: string;
   similarity?: number;
 };
@@ -29,7 +34,9 @@ export type Message = {
 };
 
 export type Session = { id: string; title: string; updated_at: string };
-export type ModelOption = { id: string; name: string; cost?: string };
+// `description` + `cost` come straight from the backend /models roster and let
+// the picker explain what each model is scoped to (e.g. "Fast" / "Most capable").
+export type ModelOption = { id: string; name: string; description?: string; cost?: string };
 
 export type KnowledgeFile = { file_name: string; chunks: number; modified: string | null };
 
@@ -71,9 +78,12 @@ export type ChatResponse = {
   session_id?: string;
 };
 
-// Job shapes for the not-yet-live generation endpoints.
+// Job shapes for the generation endpoints. The backend emits `complete` on
+// success (`done` also accepted for forward-compat) — both handled by useJob.
+// `progress` is a human-readable status line ("planning storyline…").
 export type JobStatus = {
-  status: 'queued' | 'running' | 'complete' | 'error';
+  status: 'queued' | 'running' | 'complete' | 'done' | 'error';
+  progress?: string;
   slide_count?: number;
   sheet_count?: number;
   title?: string;
@@ -83,6 +93,32 @@ export type JobStatus = {
   error?: string;
 };
 
+// Deck outline (Stage-1 plan) — returned SYNCHRONOUSLY by /generate-deck/outline.
+// The consultant edits it (reorder/delete/retitle) and posts `plan` back verbatim
+// as `approved_plan` to /generate-deck, which then skips the re-plan (no double spend).
+export type OutlineSource = { n: number; file: string; link?: string; snippet?: string };
+export type OutlineSlide = {
+  slide_template: string;
+  lede: string;
+  must_show?: string;
+  evidence_ns?: number[];
+  sources?: OutlineSource[];
+};
+export type DeckOutline = {
+  deliverable_type?: string;
+  governing_thought: string;
+  organizing_construct: string;
+  lines_of_argument: string[];
+  slides: OutlineSlide[];
+  sources_pool: OutlineSource[];
+  plan: Record<string, unknown>;
+};
+
+/** The three deliverable types the deck generator validates as a structured enum
+ * — any other value returns HTTP 400. Every other UI chip is folded into the
+ * request prose instead (the planner is LLM-driven and adapts). See DeckSurface. */
+export const DECK_ENUM_TYPES = new Set(['proposal', 'engagement_recap', 'pov_memo']);
+
 // ── Errors ─────────────────────────────────────────────────────────────────
 
 export class NotConfiguredError extends Error {
@@ -91,10 +127,11 @@ export class NotConfiguredError extends Error {
 export class NotSignedInError extends Error {
   constructor() { super('Not signed in — please re-authenticate.'); this.name = 'NotSignedInError'; }
 }
-/** Thrown by the three endpoints that don't exist on the backend yet. */
+/** Thrown when an endpoint returns 404/501 — i.e. the backend is unreachable,
+ * not that the feature is unbuilt. Surfaces a graceful "try again" state. */
 export class EndpointPendingError extends Error {
   constructor(endpoint: string) {
-    super(`${endpoint} is not available yet — backend endpoint pending.`);
+    super(`${endpoint} is currently unavailable.`);
     this.name = 'EndpointPendingError';
   }
 }
@@ -119,6 +156,13 @@ async function bearer(): Promise<string> {
 export async function currentToken(): Promise<string | null> {
   const { data } = await supabase.auth.getSession();
   return data.session?.access_token ?? null;
+}
+
+/** Stable per-user id (JWT sub) for keying the local sessions cache; null if
+ * not signed in. Never throws. */
+export async function currentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession();
+  return data.session?.user?.id ?? null;
 }
 
 function requireUrl(): string {
@@ -167,6 +211,16 @@ export async function fetchHistory(sessionId: string): Promise<Message[]> {
   return (r.history || []).map((h: any) => ({
     role: h.role, content: h.content, sources: h.sources || [],
   }));
+}
+
+/** Rewrite the user's raw/dictated notes into a well-structured prompt, in place,
+ * before sending. Cheap single-shot call on the backend (no RAG, no side effects). */
+export async function optimizePrompt(text: string): Promise<{ optimized: string }> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/optimize-prompt`, {
+    method: 'POST', headers: await authHeaders(), body: JSON.stringify({ text }),
+  });
+  return json<{ optimized: string }>(res);
 }
 
 export async function sendChat(
@@ -228,8 +282,32 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
   return json<{ job_id: string }>(res);
 }
 
+/** Stage-1 outline — cheap (~5-8s), SYNCHRONOUS, no job. Throws EndpointPending
+ * on 404/501; on 422 (`outline_failed` — no corpus evidence) json() throws with
+ * the backend detail so the surface can show an honest error. */
+export async function generateDeckOutline(input: {
+  request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
+}): Promise<DeckOutline> {
+  const url = requireUrl();
+  const token = await bearer();
+  const res = await fetch(`${url}/generate-deck/outline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/outline');
+  return json<DeckOutline>(res);
+}
+
 export async function generateDeck(input: {
   request: string; deliverable_type?: string; session_id?: string | null; client_slug?: string;
+  // When present, the backend SKIPS Stage-1 re-planning (no double spend). It is
+  // the (edited) `plan` object from generateDeckOutline; the backend also unwraps
+  // a full { plan: {...} } envelope.
+  approved_plan?: Record<string, unknown>;
+  // Length / chunked-build hints. The backend reads these from `request` prose;
+  // sent structured too for forward-compat (unknown fields are ignored server-side).
+  slide_count?: number; deck_scope?: 'full' | 'section'; section_start?: number;
 }): Promise<{ job_id: string }> {
   return postJob('/generate-deck', JSON.stringify(input), false);
 }
@@ -239,6 +317,15 @@ export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
   return json<JobStatus>(res);
+}
+
+/** Builds a download href an `<a download>` can use: the download endpoints accept
+ * the JWT as `?token=` because an anchor can't send an Authorization header. */
+export async function authedDownloadUrl(downloadUrl: string): Promise<string> {
+  const token = await currentToken();
+  if (!token) return downloadUrl;
+  const sep = downloadUrl.includes('?') ? '&' : '?';
+  return `${downloadUrl}${sep}token=${encodeURIComponent(token)}`;
 }
 
 export async function generateSurveyCompendium(file: File, title?: string): Promise<{ job_id: string }> {
@@ -255,6 +342,8 @@ export async function surveyCompendiumStatus(jobId: string): Promise<JobStatus> 
   return json<JobStatus>(res);
 }
 
+/** Ingest a document → 202 { file_id, file_name, status:"indexing" }. Poll
+ * uploadDocumentStatus(file_id) until `complete`; the doc is then searchable in /chat. */
 export async function uploadDocument(file: File, metadata?: Record<string, unknown>): Promise<{ file_id: string; file_name: string; status: string }> {
   const url = requireUrl();
   const token = await bearer();
@@ -266,4 +355,11 @@ export async function uploadDocument(file: File, metadata?: Record<string, unkno
   });
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ file_id: string; file_name: string; status: string }>(res);
+}
+
+export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/upload/${encodeURIComponent(fileId)}/status`, { headers: await authHeaders() });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
+  return json<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }>(res);
 }

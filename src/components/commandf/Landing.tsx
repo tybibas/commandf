@@ -1,97 +1,81 @@
-import { Search, Presentation, Table2, ArrowUpRight } from 'lucide-react';
-import type { Briefing } from './api';
-import { timeAgo } from './util';
+import { Sparkles } from 'lucide-react';
 
 const MOTION = 'duration-fast ease-out-expo';
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 
-export type LandingMode = 'ask' | 'deck' | 'survey';
+type IconType = React.ComponentType<{ className?: string; strokeWidth?: number }>;
+
+export interface QuickAction {
+  label: string;
+  icon: IconType;
+  onClick: () => void;
+}
 
 interface LandingProps {
   loading: boolean;
-  briefing: Briefing | null;
-  composer: React.ReactNode;          // the shared composer — the centerpiece on home
-  suggestions: string[];
-  onSelectPrompt: (text: string) => void;
-  onMode: (mode: LandingMode) => void;
+  /** Time-aware serif greeting, e.g. "Good evening". */
+  greeting: string;
+  /** Workspace/context label, e.g. "Actionist Consulting". */
+  contextLabel: string;
+  /** Workspace logo (Actionist wordmark) — shown in the chip when provided. */
+  logoSrc?: string;
+  composer: React.ReactNode;
+  quickActions: QuickAction[];
+  docCount: number;
+  lastSync?: string | null;
 }
 
 /**
- * Empty-state home, modeled on ChatGPT / Claude / Perplexity: the composer IS
- * the hero, centered in the viewport. No marketing headline, no large cards —
- * a quiet greeting, the input, then small tool chips and example prompts. When
- * a conversation starts the same composer drops to the bottom (handled by the
- * parent), so the input feels like one continuous object.
+ * Empty-state home. Emulates Claude: a small workspace chip, a centered serif
+ * greeting, the composer card as the hero, and a quiet row of quick-action
+ * chips. No boxes, no clutter — the input is the only elevated object.
  */
-function ModeChip({
-  icon: Icon, label, chip, onClick,
-}: {
-  icon: typeof Search; label: string; chip?: string; onClick: () => void;
-}) {
-  // Flat, quiet secondary action — no fill, no shadow, no lift. The composer is
-  // the only elevated object on the canvas; these sit under it as calm text.
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={[
-        'group inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1.5',
-        'text-caption text-text-muted hover:text-text-primary transition-colors',
-        MOTION, FOCUS,
-      ].join(' ')}
-    >
-      <Icon className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" strokeWidth={1.75} aria-hidden />
-      <span>{label}</span>
-      {chip && <span className="font-mono text-micro opacity-60">{chip}</span>}
-    </button>
-  );
-}
-
 export default function Landing({
-  loading, briefing, composer, suggestions, onSelectPrompt, onMode,
+  loading, greeting, contextLabel, logoSrc, composer, quickActions, docCount, lastSync,
 }: LandingProps) {
-  const docs = briefing?.knowledge?.doc_count ?? 0;
-  const lastSync = briefing?.knowledge?.last_sync_at;
-
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin">
       <div className="min-h-full flex flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-2xl">
-          {/* Warm editorial greeting — the single "premium, not another chatbot" signal.
-              Serif (Newsreader), normal weight, tight tracking, warm ink. */}
-          <div className="text-center mb-7 animate-fade-in">
-            <h1 className="font-serif text-2xl sm:text-3xl font-normal tracking-tight text-text-primary text-balance leading-tight">
-              What can the firm&#39;s memory tell you?
+          {/* Workspace identity — the tenant's logo when we have one, else a quiet
+              chip. Distilled from Claude's org chip above the greeting. */}
+          {logoSrc ? (
+            <div className="flex justify-center mb-6 animate-fade-in">
+              <img src={logoSrc} alt={contextLabel} className="brand-logo h-5 w-auto opacity-90 select-none" />
+            </div>
+          ) : contextLabel && (
+            <div className="flex justify-center mb-5 animate-fade-in">
+              <span className="inline-flex items-center gap-1.5 rounded-pill bg-bg-secondary border border-border-light px-2.5 py-1 text-caption text-text-secondary">
+                <Sparkles className="w-3 h-3 text-brand/80" strokeWidth={1.75} aria-hidden />
+                {contextLabel}
+              </span>
+            </div>
+          )}
+
+          {/* Serif greeting — Claude "Evening, Ty" */}
+          <div className="text-center mb-7 animate-fade-in" style={{ animationDelay: '40ms' }}>
+            <h1 className="font-serif text-[32px] sm:text-[40px] font-normal tracking-[-0.02em] text-text-primary leading-tight">
+              {greeting}
             </h1>
           </div>
 
-          {/* The composer — the centerpiece */}
+          {/* The composer card — the centerpiece */}
           <div className="animate-slide-up">
             {composer}
           </div>
 
-          {/* Two quiet secondary modes, directly under the input — flat text, no boxes */}
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-1 animate-fade-in" style={{ animationDelay: '60ms' }}>
-            <ModeChip icon={Presentation} label="Build a deck" chip="PPTX" onClick={() => onMode('deck')} />
-            <span className="text-text-muted/40 select-none" aria-hidden>·</span>
-            <ModeChip icon={Table2} label="Survey deck" chip="XLSX" onClick={() => onMode('survey')} />
-          </div>
-
-          {/* Example prompts — borderless, near-invisible until read. No box, no
-              eyebrow, no numerals: the calm empty-state of Claude / ChatGPT. */}
-          {suggestions.length > 0 && (
-            <div className="mt-12 flex flex-col animate-fade-in" style={{ animationDelay: '120ms' }}>
-              {suggestions.slice(0, 3).map((q) => (
+          {/* Quick actions — flat chips, distilled from Claude's Write / Strategize row */}
+          {quickActions.length > 0 && (
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 animate-fade-in" style={{ animationDelay: '80ms' }}>
+              {quickActions.map(({ label, icon: Icon, onClick }) => (
                 <button
-                  key={q}
+                  key={label}
                   type="button"
-                  onClick={() => onSelectPrompt(q)}
-                  className={`group w-full flex items-center gap-2.5 py-2.5 text-left transition-colors ${MOTION} ${FOCUS}`}
+                  onClick={onClick}
+                  className={`group inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-primary px-3 py-1.5 text-caption text-text-secondary hover:text-text-primary hover:border-border-hover hover:bg-bg-secondary transition-colors ${MOTION} ${FOCUS}`}
                 >
-                  <span className="flex-1 min-w-0 text-body text-text-muted group-hover:text-text-primary leading-snug transition-colors">
-                    {q}
-                  </span>
-                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0 text-text-muted/0 group-hover:text-text-muted/70 transition-colors" strokeWidth={1.5} aria-hidden />
+                  <Icon className="w-3.5 h-3.5 text-brand-ink transition-colors" strokeWidth={1.75} />
+                  {label}
                 </button>
               ))}
             </div>
@@ -99,9 +83,9 @@ export default function Landing({
 
           {/* Knowledge footnote — tiny, unobtrusive */}
           {!loading && (
-            <p className="mt-10 text-center text-caption text-text-muted/80 animate-fade-in" style={{ animationDelay: '160ms' }}>
-              {docs.toLocaleString()} document{docs === 1 ? '' : 's'} indexed
-              {lastSync && <> · synced {timeAgo(lastSync)}</>}
+            <p className="mt-10 text-center text-caption text-text-muted/80 animate-fade-in" style={{ animationDelay: '140ms' }}>
+              {docCount.toLocaleString()} document{docCount === 1 ? '' : 's'} indexed
+              {lastSync && <> · synced {lastSync}</>}
             </p>
           )}
         </div>
