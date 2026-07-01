@@ -72,7 +72,7 @@ function MessageRow({ m, onReuse, onBuildDeck }: { m: Message; onReuse?: (prompt
   if (m.role === 'user') {
     return (
       <div className="flex justify-end animate-fade-in">
-        <div className="max-w-[85%] rounded-surface px-4 py-2.5 text-base leading-relaxed bg-bg-secondary text-text-primary border border-border-light">
+        <div className="max-w-[85%] rounded-surface px-4 py-2.5 text-base leading-relaxed bg-bg-secondary text-text-primary border border-border-light whitespace-pre-wrap break-words">
           {m.content}
         </div>
       </div>

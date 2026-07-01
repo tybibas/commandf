@@ -13,7 +13,10 @@ import {
 } from './commandf/api';
 import { useDictation } from '../hooks/useDictation';
 import MicButton from './commandf/MicButton';
-import { readSessionsCache, writeSessionsCache } from './commandf/sessionsCache';
+import {
+  readSessionsCache, writeSessionsCache,
+  readDraft, writeDraft, readActiveSession, writeActiveSession,
+} from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
 import Composer from './commandf/Composer';
 import Conversation from './commandf/Conversation';
@@ -126,6 +129,13 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Stable user id for keying the local sessions cache (avoids stale closures).
   const userIdRef = useRef<string | null>(null);
+  // Restore the draft/active-thread exactly once, after the uid is known.
+  const didRestoreRef = useRef(false);
+
+  // Persist the composer draft and the active thread so a tab close / reload /
+  // minimize never loses progress. Writes are keyed by the signed-in operator.
+  useEffect(() => { writeDraft(userIdRef.current, input); }, [input]);
+  useEffect(() => { writeActiveSession(userIdRef.current, sessionId); }, [sessionId]);
 
   const notConfigured = !COMMANDF_URL;
 
@@ -154,6 +164,21 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     userIdRef.current = uid;
     const cached = readSessionsCache(uid);
     if (cached.length) setSessions(cached);
+    // Restore the unsent composer draft and the last open thread (survives tab
+    // close / reload). Guarded so it runs once and never clobbers live typing.
+    if (!didRestoreRef.current) {
+      didRestoreRef.current = true;
+      const draft = readDraft(uid);
+      if (draft) setInput((cur) => cur || draft);
+      const lastSid = readActiveSession(uid);
+      if (lastSid) {
+        setSessionId(lastSid);
+        setSurface('chat');
+        fetchHistory(lastSid)
+          .then((h) => setMessages(h))
+          .catch(() => { setSessionId(null); setSurface('home'); writeActiveSession(uid, null); });
+      }
+    }
     try {
       const [m] = await Promise.all([
         fetchModels().catch(() => []),
