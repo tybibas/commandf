@@ -69,7 +69,7 @@ export const MOCK_CHAT_RESPONSE: ChatResponse = {
 };
 
 export const MOCK_HISTORY = [
-  { role: 'user', content: 'What is the single most reusable lesson across our last five engagements?', sources: [] },
+  { role: 'user', content: 'Build a one-page proposal for a PE firm prospect covering due diligence services. The proposal should:\n- Lead with a past engagement where we conducted due diligence for a PE firm on a toy company acquisition or portfolio company\n- Summarize the results we delivered in that engagement\n- Explain why those results and our approach make us the right choice for this prospect\n\nSearch our document corpus for relevant past PE due diligence work, especially toy/consumer goods sector cases, and pull language, findings, and methodology that can anchor this proposal.', sources: [] },
   { role: 'assistant', content: MOCK_ANSWER_MD, sources: MOCK_SOURCES },
 ];
 

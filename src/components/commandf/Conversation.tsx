@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { AlertCircle, Sparkles } from 'lucide-react';
+import { AlertCircle, Sparkles, Copy, Check, PencilLine } from 'lucide-react';
 import CommandFMarkdown from '../CommandFMarkdown';
 import { SourceList } from './SourceCard';
 import { groupSources } from './util';
@@ -68,17 +68,81 @@ function AssistantMessage({
   );
 }
 
-function MessageRow({ m, onReuse, onBuildDeck }: { m: Message; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
-  if (m.role === 'user') {
-    return (
-      <div className="flex justify-end animate-fade-in">
-        <div className="max-w-[85%] rounded-surface px-4 py-2.5 text-base leading-relaxed bg-bg-secondary text-text-primary border border-border-light whitespace-pre-wrap break-words">
+/**
+ * The user's turn. Mirrors Claude/Perplexity: a right-aligned bubble that keeps
+ * its line breaks, collapses a long message behind a "Show more" fade so it
+ * never dominates the transcript, and reveals quiet copy / edit affordances on
+ * hover. "Edit" drops the text back into the composer to re-ask.
+ */
+function UserMessage({ m, onEdit }: { m: Message; onEdit?: (prompt: string) => void }) {
+  const collapsible = m.content.length > 320 || m.content.split('\n').length > 6;
+  const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>();
+  const collapsed = collapsible && !expanded;
+
+  const copy = useCallback(() => {
+    navigator.clipboard?.writeText(m.content).then(() => {
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1400);
+    }).catch(() => {});
+  }, [m.content]);
+
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
+
+  return (
+    <div className="group flex flex-col items-end gap-1 animate-fade-in">
+      <div className="relative max-w-[80%] rounded-surface px-4 py-2.5 text-base leading-relaxed bg-bg-secondary text-text-primary border border-border-light">
+        <div className={`whitespace-pre-wrap break-words ${collapsed ? 'max-h-[8.5rem] overflow-hidden' : ''}`}>
           {m.content}
         </div>
+        {collapsed && (
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="absolute inset-x-0 bottom-0 flex items-end justify-center pb-2 pt-12 rounded-b-surface bg-gradient-to-t from-bg-secondary via-bg-secondary to-transparent"
+          >
+            <span className="text-caption font-medium text-text-secondary hover:text-text-primary bg-bg-secondary px-2 py-0.5 rounded-full border border-border-light shadow-sm transition-colors">Show more</span>
+          </button>
+        )}
       </div>
-    );
-  }
+      {/* Quiet action row — collapse toggle always available when long; copy/edit on hover. */}
+      <div className="flex items-center gap-1 pr-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        {collapsible && expanded && (
+          <button
+            type="button"
+            onClick={() => setExpanded(false)}
+            className="text-caption text-text-muted hover:text-text-primary px-1.5 py-0.5 rounded-control transition-colors"
+          >
+            Show less
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={copied ? 'Copied' : 'Copy message'}
+          className="p-1 rounded-control text-text-muted hover:text-text-primary hover:bg-bg-secondary transition-colors"
+        >
+          {copied ? <Check className="w-3.5 h-3.5" strokeWidth={2} aria-hidden /> : <Copy className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />}
+        </button>
+        {onEdit && (
+          <button
+            type="button"
+            onClick={() => onEdit(m.content)}
+            aria-label="Edit and re-ask"
+            className="p-1 rounded-control text-text-muted hover:text-text-primary hover:bg-bg-secondary transition-colors"
+          >
+            <PencilLine className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
+function MessageRow({ m, onReuse, onBuildDeck }: { m: Message; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
+  if (m.role === 'user') return <UserMessage m={m} onEdit={onReuse} />;
   return <AssistantMessage m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />;
 }
 
