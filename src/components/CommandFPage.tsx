@@ -9,6 +9,7 @@ import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChat, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentToken, currentUserId, NotSignedInError,
+  uploadDocument, uploadDocumentStatus, EndpointPendingError,
 } from './commandf/api';
 import { readSessionsCache, writeSessionsCache } from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
@@ -71,6 +72,32 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
   const contextLabel = isActionist ? 'Actionist Consulting' : 'Operator workspace';
 
   const toast = useToast();
+  // Drag-and-drop a document into the chat → route it to the live upload→index
+  // path so it becomes searchable (grounded), the way Claude/ChatGPT accept files.
+  const [dragDepth, setDragDepth] = useState(0);
+  const DROP_ACCEPT = /\.(pdf|docx|pptx)$/i;
+  const dropUpload = async (f: File) => {
+    if (!DROP_ACCEPT.test(f.name)) { toast.error('Drop a PDF, DOCX, or PPTX.'); return; }
+    const id = toast.loading(`Indexing ${f.name}…`);
+    try {
+      const { file_id } = await uploadDocument(f);
+      const deadline = Date.now() + 3 * 60_000;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const s = await uploadDocumentStatus(file_id);
+        if (s.status === 'complete') {
+          const n = typeof s.chunks_indexed === 'number' ? s.chunks_indexed : null;
+          toast.updateToast(id, n != null ? `Added ${f.name} — ${n.toLocaleString()} passage${n === 1 ? '' : 's'} indexed. Ask me about it.` : `Added ${f.name} — indexed. Ask me about it.`, 'success');
+          return;
+        }
+        if (s.status === 'error') { toast.updateToast(id, s.error || 'Indexing failed.', 'error'); return; }
+        if (Date.now() > deadline) { toast.updateToast(id, `${f.name} is still indexing — it'll be searchable shortly.`, 'success'); return; }
+        await new Promise((r) => setTimeout(r, 2500));
+      }
+    } catch (e: any) {
+      toast.updateToast(id, e instanceof EndpointPendingError ? 'Upload is momentarily unavailable — try the knowledge panel.' : (e?.message || 'Upload failed.'), 'error');
+    }
+  };
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Stable user id for keying the local sessions cache (avoids stale closures).
   const userIdRef = useRef<string | null>(null);
@@ -387,7 +414,20 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
         account={headerExtra}
       />
 
-      <div className="flex-1 flex flex-col min-h-0">
+      <div
+        className="relative flex-1 flex flex-col min-h-0"
+        onDragEnter={(e) => { if ((surface === 'home' || surface === 'chat') && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragDepth((d) => d + 1); } }}
+        onDragOver={(e) => { if (dragDepth > 0) e.preventDefault(); }}
+        onDragLeave={() => setDragDepth((d) => Math.max(0, d - 1))}
+        onDrop={(e) => { if (dragDepth > 0) { e.preventDefault(); setDragDepth(0); const f = e.dataTransfer.files?.[0]; if (f) dropUpload(f); } }}
+      >
+        {dragDepth > 0 && (surface === 'home' || surface === 'chat') && (
+          <div className="absolute inset-3 z-30 rounded-2xl border-2 border-dashed border-brand/60 bg-bg-primary/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-fade-in">
+            <Upload className="w-8 h-8 text-brand-ink mb-2" strokeWidth={1.5} aria-hidden />
+            <p className="text-body font-medium text-text-primary">Drop to add to your knowledge base</p>
+            <p className="text-caption text-text-muted mt-1">PDF, DOCX, or PPTX — indexed and searchable in chat</p>
+          </div>
+        )}
         {surface === 'deck' ? (
           <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} onOpenSurvey={() => setSurface('survey')} />
         ) : surface === 'survey' ? (
