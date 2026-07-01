@@ -11,11 +11,11 @@
   --color-bg-tertiary: #f3f4f6;
   --color-bg-elevated: #ffffff;
 
-  /* Accent (Gold — brand identity, consistent across themes) */
-  --color-accent-primary: #F59E0B;
-  --color-accent-hover: #D97706;
-  --color-accent-pressed: #B45309;
-  --color-accent-muted: rgba(245, 158, 11, 0.15);
+  /* Accent — neutral ink (brand-color constraint removed; restyle freely) */
+  --color-accent-primary: #111827;
+  --color-accent-hover: #000000;
+  --color-accent-pressed: #000000;
+  --color-accent-muted: rgba(17, 24, 39, 0.08);
 
   /* Text */
   --color-text-primary: #111827;
@@ -101,11 +101,11 @@
   --color-bg-tertiary: #1A1D25;
   --color-bg-elevated: #161921;
 
-  /* Accent (Amber/Gold) */
-  --color-accent-primary: #F59E0B;
-  --color-accent-hover: #D97706;
-  --color-accent-pressed: #B45309;
-  --color-accent-muted: rgba(245, 158, 11, 0.15);
+  /* Accent — neutral light ink (brand-color constraint removed) */
+  --color-accent-primary: #E5E7EB;
+  --color-accent-hover: #F3F4F6;
+  --color-accent-pressed: #D1D5DB;
+  --color-accent-muted: rgba(229, 231, 235, 0.12);
 
   /* Light Text for Dark Mode */
   --color-text-primary: #E5E7EB;
