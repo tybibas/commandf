@@ -245,6 +245,9 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
 
 export async function generateDeck(input: {
   request: string; deliverable_type?: string; session_id?: string | null; client_slug?: string;
+  // Slide-count + chunked-build fields. `request` also carries this context in prose
+  // so generation works before the backend formalizes these; see docs/BACKEND_TODOS.md.
+  slide_count?: number; deck_scope?: 'full' | 'section'; section_start?: number;
 }): Promise<{ job_id: string }> {
   return postJob('/generate', JSON.stringify(input), false);
 }

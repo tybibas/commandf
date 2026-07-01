@@ -149,3 +149,21 @@ Cowork's Three-statement model / Due diligence / Candidates Sourcer):
   recap, POV memo, Case study. **Survey compendium** is surfaced as a chip but routes to its own
   tool (spreadsheet upload) via onOpenSurvey → the survey surface (↗ affordance).
 - Generation/pending/result states render in the right rail; left rail stays as context.
+
+---
+
+## Deck surface — three levers (grounded types, dynamic examples, chunked builds)
+
+Researched Actionist's indexed corpus (`commandf_document_chunks`, title-frequency) to ground this.
+- **Deliverable types** rebuilt from what the firm actually produces: Auto-detect, Board / SteerCo
+  (the #1 category), Diagnostic (the "analysis deck"), Strategy, Market landscape, Due diligence,
+  Engagement recap, Proposal. (Dropped rare POV/case-study.)
+- **Dynamic example (lever 1):** each type carries its own true-to-life brief; selecting a type
+  swaps the brief placeholder + "Use an example" insert to match that deck's natural query.
+- **Scope + slide count (lever 3):** a "Full deck | In sections" toggle gates the complexity.
+  Full deck adds a Length selector (Auto/~10/~15/~20). In sections: a Slides selector (10/15/20),
+  a "The full deck" field (context that carries into every section), and a "This section · slides
+  X-Y" field; the primary reads "Generate slides X-Y", and the result offers "Build slides Y+1-…"
+  which advances the range while keeping the full-deck context (in-session continuity; full
+  cross-session resume needs the backend deck-project entity spec'd in docs/BACKEND_TODOS.md).
+- Survey compendium moved to a quiet text link that routes to its own tool (declutters the chips).

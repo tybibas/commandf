@@ -164,8 +164,8 @@ export function ErrorPanel({ message, onRetry }: { message: string; onRetry: () 
 
 /** Success state — the generated deck/compendium as a first-class object. */
 export function ResultPanel({
-  result, kindLabel, onReset,
-}: { result: JobStatus; kindLabel: string; onReset: () => void }) {
+  result, kindLabel, onReset, secondaryAction,
+}: { result: JobStatus; kindLabel: string; onReset: () => void; secondaryAction?: { label: string; onClick: () => void } }) {
   // Prefer a real title; otherwise fall back to a slide count as the object's name.
   const countLabel =
     typeof result.slide_count === 'number' ? `${result.slide_count} slides` : null;
@@ -195,6 +195,14 @@ export function ResultPanel({
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {secondaryAction && (
+            <button
+              onClick={secondaryAction.onClick}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-control text-caption ${INK_BTN}`}
+            >
+              {secondaryAction.label}
+            </button>
+          )}
           <button
             onClick={onReset}
             className={`inline-flex items-center gap-1.5 px-2.5 py-2 rounded-control text-caption ${GHOST_BTN}`}

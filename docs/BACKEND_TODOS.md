@@ -21,3 +21,19 @@ Ordered by how much the frontend already assumes them.
 5. **Deck result fields.** `GET /generate/{job_id}` on done should include `download_url`
    (.pptx) and, ideally, `preview_urls[]` (slide PNGs) + `title`/`slide_count` — the result
    panel already renders a download button + a thumbnail rail from these.
+
+## Deck generation — deliverable types + chunked builds (frontend ready)
+
+6. **Deliverable types.** The UI now sends `deliverable_type` values grounded in the indexed
+   corpus (title-frequency): `board_update`, `diagnostic`, `strategy`, `market_landscape`,
+   `due_diligence`, `engagement_recap`, `proposal` (plus empty = auto-detect). Map these in the
+   generation prompt to the right storyline template. (Dropped the rare `pov_memo`/`case_study`;
+   re-add if you want them.)
+7. **Slide count + chunked builds.** `generateDeck` now also sends `slide_count?`, `deck_scope?:
+   'full' | 'section'`, and `section_start?`. For chunked builds the full-deck context + the
+   section focus + the already-built range are ALSO packed into the `request` prose, so generation
+   works today even if you ignore the structured fields. To make "build the next 10 slides with
+   full context intact" robust across sessions, add a **deck-project** entity (id) the frontend can
+   pass back so the backend resumes from the real prior slides rather than re-deriving from prose.
+   Return the project/deck id + a running slide count on the job result so the UI can advance the
+   range authoritatively.
