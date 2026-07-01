@@ -381,7 +381,7 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
 
       <div className="flex-1 flex flex-col min-h-0">
         {surface === 'deck' ? (
-          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} />
+          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} onOpenSurvey={() => setSurface('survey')} />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (

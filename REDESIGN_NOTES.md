@@ -132,3 +132,20 @@ Deck generation (`DeckSurface.tsx`, `generationUI.tsx`):
   seeded with the originating question.
 - Backend follow-ups captured in `docs/BACKEND_TODOS.md` (incl. cross-engagement `synthesis` field,
   which needs the backend LLM — spec'd, not faked).
+
+---
+
+## Deck surface — two-panel workflow redesign
+
+Replaced the grey-text stack with the reference two-panel workflow card (distilled from Claude
+Cowork's Three-statement model / Due diligence / Candidates Sourcer):
+- **Left rail:** deck icon, serif "Build a deck", one-line description, and 3 capability bullets
+  pinned to the bottom.
+- **Right rail — only the inputs the workflow needs** (grounded in POST /generate {request,
+  deliverable_type}, no invented fields): deliverable-type chips + a single Brief field with one
+  targeted example ("Use an example" inserts it) and one line of guidance on what a good brief
+  names. Primary "Generate deck" anchored bottom-right, muted until the brief has content.
+- **Deliverable types** grounded in what the engine produces: Auto-detect, Proposal, Engagement
+  recap, POV memo, Case study. **Survey compendium** is surfaced as a chip but routes to its own
+  tool (spreadsheet upload) via onOpenSurvey → the survey surface (↗ affordance).
+- Generation/pending/result states render in the right rail; left rail stays as context.

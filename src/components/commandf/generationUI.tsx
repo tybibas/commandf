@@ -45,7 +45,7 @@ export function PendingNote({ endpoint }: { endpoint: string }) {
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-medium text-text-primary leading-snug">
-            Preview — generation goes live shortly
+            Preview: generation goes live shortly
           </p>
           <p className="mt-1 text-[12px] text-text-muted leading-relaxed">
             Everything you enter here is ready and runs unchanged the moment the pipeline is live.
