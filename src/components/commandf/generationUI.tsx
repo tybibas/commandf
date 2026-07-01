@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers, Wand2, X } from 'lucide-react';
 import { authedDownloadUrl, type JobStatus } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -161,10 +161,101 @@ export function ErrorPanel({ message, onRetry }: { message: string; onRetry: () 
   );
 }
 
+/**
+ * Iterative in-place slide editing (post-draft). When ResultPanel is given a
+ * `slideEdit` handler, each slide thumbnail gets an Edit affordance that opens a
+ * prompt box ("make this a stacked bar by segment", "tighten the title"). The
+ * host (DeckSurface) runs the per-slide regenerate backend and re-renders. This
+ * whole block is additive: without `slideEdit` the panel behaves exactly as
+ * before (view/download only), so callers that don't wire editing are unaffected.
+ */
+export type SlideEdit = {
+  // Regenerate one slide (0-based, matching preview order) from an instruction.
+  onEdit: (slideIndex: number, instruction: string) => Promise<void> | void;
+  // The slide currently regenerating (shows a spinner + disables inputs), if any.
+  busyIndex?: number | null;
+  // Optional short error surfaced under the active editor.
+  error?: string | null;
+};
+
+function SlideThumb({
+  url, index, slideEdit,
+}: { url: string; index: number; slideEdit?: SlideEdit }) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState('');
+  const busy = slideEdit?.busyIndex === index;
+
+  const submit = async () => {
+    const text = instruction.trim();
+    if (!text || !slideEdit || busy) return;
+    await slideEdit.onEdit(index, text);
+    setInstruction('');
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative shrink-0 snap-start group/thumb">
+      <img
+        src={url}
+        alt={`Slide ${index + 1}`}
+        loading="lazy"
+        className={`h-[88px] aspect-[16/9] object-cover rounded-control border bg-bg-primary transition-colors ${busy ? 'border-brand opacity-60' : 'border-border-light'}`}
+      />
+      <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-[10px] font-num text-text-muted leading-none">
+        {index + 1}
+      </span>
+      {slideEdit && (
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          disabled={busy}
+          aria-label={`Edit slide ${index + 1}`}
+          className={`absolute top-1 right-1 inline-flex items-center justify-center w-5 h-5 rounded-[4px] bg-bg-primary/90 text-text-secondary hover:text-text-primary opacity-0 group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity ${FOCUS} disabled:opacity-40`}
+        >
+          {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" strokeWidth={1.75} />}
+        </button>
+      )}
+
+      {open && slideEdit && (
+        <div className="absolute z-10 top-[92px] left-0 w-[240px] rounded-surface border border-border-hover bg-bg-elevated shadow-float p-2.5 animate-slide-up">
+          <div className="flex items-center justify-between mb-1.5">
+            <p className="eyebrow text-text-muted">Edit slide {index + 1}</p>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="text-text-muted hover:text-text-primary">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+          <textarea
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submit(); }}
+            rows={2}
+            autoFocus
+            disabled={busy}
+            placeholder="e.g. make this a stacked bar by segment, or tighten the title"
+            className={`w-full resize-y rounded-control border border-border bg-bg-secondary px-2 py-1.5 text-caption text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover transition-colors ${FOCUS} disabled:opacity-60`}
+          />
+          {slideEdit.error && slideEdit.busyIndex === index && (
+            <p className="mt-1 text-micro text-error leading-snug">{slideEdit.error}</p>
+          )}
+          <button
+            type="button"
+            onClick={submit}
+            disabled={busy || !instruction.trim()}
+            className={`mt-1.5 inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-control text-caption font-medium disabled:opacity-40 ${INK_BTN}`}
+          >
+            {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" strokeWidth={1.75} />}
+            {busy ? 'Regenerating…' : 'Regenerate slide'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Success state — the generated deck/compendium as a first-class object. */
 export function ResultPanel({
-  result, kindLabel, onReset, secondaryAction,
-}: { result: JobStatus; kindLabel: string; onReset: () => void; secondaryAction?: { label: string; onClick: () => void } }) {
+  result, kindLabel, onReset, secondaryAction, slideEdit,
+}: { result: JobStatus; kindLabel: string; onReset: () => void; secondaryAction?: { label: string; onClick: () => void }; slideEdit?: SlideEdit }) {
   // Prefer a real title; otherwise fall back to a slide count as the object's name.
   const countLabel =
     typeof result.slide_count === 'number' ? `${result.slide_count} slides` : null;
@@ -225,19 +316,12 @@ export function ResultPanel({
           A quiet horizontal rail so decks of any length stay one calm row. */}
       {result.preview_urls && result.preview_urls.length > 0 && (
         <div className="px-5 border-t border-hairline pt-4">
-          <div className="flex gap-2 overflow-x-auto scrollbar-thin pb-1 snap-x">
+          {slideEdit && (
+            <p className="mb-2 text-micro text-text-muted">Hover a slide to edit it by prompt.</p>
+          )}
+          <div className="flex gap-2 overflow-x-auto overflow-y-visible scrollbar-thin pb-1 snap-x">
             {result.preview_urls.map((u, i) => (
-              <div key={i} className="relative shrink-0 snap-start">
-                <img
-                  src={u}
-                  alt={`Slide ${i + 1}`}
-                  loading="lazy"
-                  className="h-[88px] aspect-[16/9] object-cover rounded-control border border-border-light bg-bg-primary"
-                />
-                <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-[10px] font-num text-text-muted leading-none">
-                  {i + 1}
-                </span>
-              </div>
+              <SlideThumb key={i} url={u} index={i} slideEdit={slideEdit} />
             ))}
           </div>
         </div>

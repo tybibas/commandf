@@ -182,11 +182,19 @@ export function SourceList({
 }: {
   sources: Source[];
   onReuse?: (prompt: string) => void;
-  onBuildDeck?: () => void;
+  // Source-pinning (item 5): hand the deck builder the specific document ids
+  // shown here so the deck GROUNDS in these sources instead of re-retrieving the
+  // whole corpus. Back-compatible: callers may ignore the argument.
+  onBuildDeck?: (fileIds: string[]) => void;
   highlightN?: number | null;
 }) {
   const groups = groupSources(sources);
   if (groups.length === 0) return null;
+
+  // Deduped Drive file_ids backing these sources (order preserved).
+  const pinnedFileIds = Array.from(
+    new Set(sources.map((s) => s.file_id).filter((id): id is string => !!id)),
+  );
 
   return (
     <div className="mt-5 pt-4 hairline-t">
@@ -216,7 +224,7 @@ export function SourceList({
         <div className="mt-2.5 flex justify-end">
           <button
             type="button"
-            onClick={onBuildDeck}
+            onClick={() => onBuildDeck(pinnedFileIds)}
             className={`inline-flex items-center gap-1.5 rounded-control px-1.5 py-1 text-caption text-text-muted hover:text-text-secondary transition-colors ${MOTION} ${FOCUS}`}
           >
             <Presentation className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />

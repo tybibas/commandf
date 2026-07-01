@@ -12,6 +12,7 @@ export function useJob(poll: (jobId: string) => Promise<JobStatus>) {
   const [phase, setPhase] = useState<JobPhase>('idle');
   const [result, setResult] = useState<JobStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);  // exposed for per-slide editing
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clear = useCallback(() => {
@@ -22,14 +23,15 @@ export function useJob(poll: (jobId: string) => Promise<JobStatus>) {
 
   const reset = useCallback(() => {
     clear();
-    setPhase('idle'); setResult(null); setError(null);
+    setPhase('idle'); setResult(null); setError(null); setJobId(null);
   }, [clear]);
 
   const run = useCallback(async (start: () => Promise<{ job_id: string }>) => {
     clear();
-    setPhase('starting'); setResult(null); setError(null);
+    setPhase('starting'); setResult(null); setError(null); setJobId(null);
     try {
       const { job_id } = await start();
+      setJobId(job_id);
       setPhase('running');
       const deadline = Date.now() + 5 * 60_000; // 5-minute safety valve
       timer.current = setInterval(async () => {
@@ -52,5 +54,5 @@ export function useJob(poll: (jobId: string) => Promise<JobStatus>) {
     }
   }, [clear, poll]);
 
-  return { phase, result, error, run, reset };
+  return { phase, result, error, jobId, run, reset };
 }
