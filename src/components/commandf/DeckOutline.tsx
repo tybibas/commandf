@@ -1,8 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   ArrowLeft, Sparkles, ChevronUp, ChevronDown, Trash2, FileText, Loader2,
 } from 'lucide-react';
 import type { DeckOutline as Outline, OutlineSlide } from './api';
+import SlideSkeleton from './SlideSkeleton';
+
+const CHIP = 'px-2.5 py-1 rounded-[5px] text-caption font-medium capitalize transition-colors';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
@@ -28,6 +31,19 @@ export default function DeckOutline({
 }) {
   const [thought, setThought] = useState(outline.governing_thought);
   const [slides, setSlides] = useState<OutlineSlide[]>(outline.slides);
+  const [view, setView] = useState<'storyline' | 'layout'>('storyline');
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+
+  // Clicking a layout thumbnail jumps to its editable card in the storyline view.
+  useEffect(() => {
+    if (view !== 'storyline' || focusIndex == null) return;
+    const el = document.getElementById(`sl-${focusIndex}`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const clear = setTimeout(() => setFocusIndex(null), 1400);
+    return () => clearTimeout(clear);
+  }, [view, focusIndex]);
+
+  const layoutCount = new Set(slides.map((s) => s.slide_template)).size;
 
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
@@ -80,14 +96,45 @@ export default function DeckOutline({
             )}
           </div>
 
-          {/* Slides */}
-          <div className="px-6 py-5 md:px-7 space-y-2">
-            <div className="flex items-center justify-between mb-1">
-              <p className="eyebrow text-text-muted">{slides.length} slide{slides.length === 1 ? '' : 's'}</p>
-              <span className="text-caption text-text-muted">{prettyTemplate(outline.organizing_construct)}</span>
+          {/* Slides — Storyline (editable arguments) vs Layout (structure straw-man) */}
+          <div className="px-6 py-5 md:px-7">
+            <div className="flex items-center justify-between gap-3 mb-3">
+              <p className="text-caption text-text-muted truncate">
+                {prettyTemplate(outline.organizing_construct)} · {slides.length} slide{slides.length === 1 ? '' : 's'} · {layoutCount} layout{layoutCount === 1 ? '' : 's'} · grounded in {outline.sources_pool.length} source{outline.sources_pool.length === 1 ? '' : 's'}
+              </p>
+              <div className="shrink-0 inline-flex rounded-control border border-border-light p-0.5" role="tablist" aria-label="Outline view">
+                {(['storyline', 'layout'] as const).map((v) => (
+                  <button key={v} type="button" role="tab" aria-selected={view === v} onClick={() => setView(v)}
+                    className={`${CHIP} ${FOCUS} ${view === v ? 'bg-text-primary text-bg-primary' : 'text-text-secondary hover:text-text-primary'}`}>
+                    {v}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {view === 'layout' ? (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+                {slides.map((s, i) => {
+                  const grounded = (s.sources?.length ?? 0) > 0;
+                  return (
+                    <button key={i} type="button" onClick={() => { setView('storyline'); setFocusIndex(i); }}
+                      className={`group text-left rounded-surface p-1.5 border border-transparent hover:border-border-light hover:bg-bg-secondary/40 transition-colors ${MOTION} ${FOCUS}`}>
+                      <div className="relative">
+                        <SlideSkeleton template={s.slide_template} />
+                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-[10px] font-num text-text-muted leading-none">{i + 1}</span>
+                        <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${grounded ? 'bg-success' : 'bg-warning'}`}
+                          title={grounded ? 'Source found at plan time' : 'No source yet'} aria-hidden />
+                      </div>
+                      <p className="mt-1.5 text-caption text-text-primary leading-snug line-clamp-2">{s.lede}</p>
+                      <span className="text-micro text-text-muted">{prettyTemplate(s.slide_template)}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+            <div className="space-y-2">
             {slides.map((s, i) => (
-              <div key={i} className="group rounded-surface border border-border-light bg-bg-secondary/40 px-3.5 py-3 flex items-start gap-3 animate-slide-up">
+              <div key={i} id={`sl-${i}`} className={`group rounded-surface border bg-bg-secondary/40 px-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-brand' : 'border-border-light'}`}>
                 <span className="mt-0.5 shrink-0 font-num text-caption text-text-muted tabular-nums w-5 text-right">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <input value={s.lede} onChange={(e) => retitle(i, e.target.value)} disabled={building} aria-label={`Slide ${i + 1} title`}
@@ -112,6 +159,8 @@ export default function DeckOutline({
                 </div>
               </div>
             ))}
+            </div>
+            )}
           </div>
 
           {/* Build */}
