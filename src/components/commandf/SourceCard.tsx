@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { FileText, ArrowUpRight, ChevronRight, MoreHorizontal, LayoutTemplate, PenLine, GitCompare, Presentation } from 'lucide-react';
+import { FileText, ArrowUpRight, ChevronRight, MoreHorizontal, PenLine, GitCompare, Presentation } from 'lucide-react';
 import type { Source } from './api';
 import { parseDeliverableName, confidenceBand, groupSources, reusePrompt, type GroupedSource } from './util';
 
 const MOTION = 'duration-fast ease-out-expo';
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
 
+// "Use as template" was removed (no-clutter mandate): for the many sources that
+// are call notes / interviews / transcripts, "template" is a misnomer, and the
+// action was just a composer prefill. "Draft from this" + "Compare to current"
+// are honest for any document.
 const REUSE_ACTIONS = [
-  { key: 'template' as const, label: 'Use as template', Icon: LayoutTemplate },
   { key: 'draft' as const, label: 'Draft from this', Icon: PenLine },
   { key: 'compare' as const, label: 'Compare to current', Icon: GitCompare },
 ];
