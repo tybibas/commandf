@@ -167,3 +167,17 @@ Researched Actionist's indexed corpus (`commandf_document_chunks`, title-frequen
   which advances the range while keeping the full-deck context (in-session continuity; full
   cross-session resume needs the backend deck-project entity spec'd in docs/BACKEND_TODOS.md).
 - Survey compendium moved to a quiet text link that routes to its own tool (declutters the chips).
+
+---
+
+## Deck/Survey — custom length, section pacing, aligned survey UI
+
+- **Custom slide count:** full-deck Length adds a "Custom" chip → inline number stepper (any length,
+  not capped at 20); per-section Slides adds a Custom field too.
+- **Section pacing:** in-sections mode gains an optional "of ~N total" input, so the agent knows it
+  is building slides 1-10 of ~60 (setup-heavy) vs 1-10 of ~18 — carried into the range label + request.
+- **Example wording:** made client-agnostic (dropped mock client names) so each type reads as a
+  universal template.
+- **Survey compendium** rebuilt onto the same two-panel card as Build-a-deck (left rail icon +
+  title + capabilities; right rail dropzone + optional title + bottom-right primary), so the two
+  tools feel like one family. The deck's "Open that tool" link routes here.
