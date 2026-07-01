@@ -198,8 +198,8 @@ export default function DeckSurface({
             <div className="flex items-start gap-2.5">
               <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
               <p className="text-caption leading-relaxed text-text-secondary">
-                <span className="font-medium text-text-primary">Preview — outline endpoint pending.</span>{' '}
-                The deck flow is wired to <code className="font-mono text-micro bg-bg-tertiary rounded-control px-1 py-0.5">POST /generate-deck/outline</code>; it will light up the moment the backend responds.
+                <span className="font-medium text-text-primary">Couldn't reach the outline service.</span>{' '}
+                Your brief is saved — try again in a moment, or skip straight to building the deck.
               </p>
             </div>
           </div>
@@ -269,8 +269,8 @@ function PendingBuildNote() {
       <div className="flex items-start gap-2.5">
         <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
         <p className="text-caption leading-relaxed text-text-secondary">
-          <span className="font-medium text-text-primary">Preview — build endpoint pending.</span>{' '}
-          Wired to <code className="font-mono text-micro bg-bg-tertiary rounded-control px-1 py-0.5">POST /generate-deck</code>; it goes live the moment the backend responds.
+          <span className="font-medium text-text-primary">Couldn't reach the deck builder.</span>{' '}
+          Your outline is saved — try again in a moment.
         </p>
       </div>
     </div>

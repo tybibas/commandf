@@ -162,9 +162,10 @@ export default function KnowledgePanel({
           />
         </section>
 
-        {/* Indexed files */}
+        {/* Recently indexed — a sample; the authoritative total is the Documents
+            stat above (the backend returns only the most-recent files here). */}
         <section>
-          <p className="eyebrow text-text-muted mb-2.5">Indexed files · {files.length}</p>
+          <p className="eyebrow text-text-muted mb-2.5">Recently indexed</p>
           {files.length === 0 ? (
             <p className="text-caption text-text-muted">Nothing indexed yet. Connect a source or upload a file.</p>
           ) : (

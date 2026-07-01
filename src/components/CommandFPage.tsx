@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Plus, Database, Upload, Presentation, Table2, PenLine, Search, GitCompare, MessageSquare,
+  Plus, Database, Upload, Presentation, Table2, Search, GitCompare, MessageSquare,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { useClientStrategy } from '../contexts/ClientStrategyContext';
@@ -28,13 +28,17 @@ const MOTION = 'duration-fast ease-out-expo';
 const PROMPT_ICP = 'Summarise our ICP and positioning for a new client pitch';
 const PROMPT_PROOF = 'What proof points and case studies can I cite for an agency lead?';
 const PROMPT_SIMILAR = 'Which engagements are most similar to a mid-market roll-up?';
-const PROMPT_VOICE = 'Draft the opening of an outreach note in our voice';
 const PROMPT_COMPARE = 'Compare how we framed the repositioning at Stonepoint with the redesign at Cardinal.';
 
 type Surface = 'home' | 'chat' | 'deck' | 'survey';
 
 function greetingForNow(): string {
-  const h = new Date().getHours();
+  // Anchor to Pacific time regardless of the viewer's local zone, so the
+  // greeting matches the firm's working day (PT). Intl handles PDT/PST.
+  const hourStr = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Los_Angeles', hour: 'numeric', hour12: false,
+  }).format(new Date());
+  const h = parseInt(hourStr, 10) % 24; // some ICU builds render midnight as "24"
   if (h < 12) return 'Good morning';
   if (h < 18) return 'Good afternoon';
   return 'Good evening';
@@ -286,11 +290,15 @@ export function CommandFPage({ headerExtra }: { headerExtra?: React.ReactNode } 
     })),
   ];
 
+  // Lead with the tool's most distinctive capability (build a deck grounded in
+  // past work), then the two highest-value ways to interrogate the firm's memory.
+  // "Draft in our voice" was dropped from the lead row — it's an outreach/PulsePoint
+  // pattern, not an Actionist lead function, and a grounded memo is reachable by
+  // prompt or the deck's pov_memo type when actually needed.
   const quickActions: QuickAction[] = [
-    { label: 'Draft in our voice', icon: PenLine, onClick: () => selectPrompt(PROMPT_VOICE) },
+    { label: 'Build a deck', icon: Presentation, onClick: () => setSurface('deck') },
     { label: 'Find a precedent', icon: Search, onClick: () => selectPrompt(isActionist ? PROMPT_SIMILAR : PROMPT_PROOF) },
     { label: 'Compare engagements', icon: GitCompare, onClick: () => selectPrompt(isActionist ? PROMPT_COMPARE : PROMPT_ICP) },
-    { label: 'Build a deck', icon: Presentation, onClick: () => setSurface('deck') },
   ];
 
   const plusItems = [

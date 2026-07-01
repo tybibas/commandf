@@ -45,11 +45,10 @@ export function PendingNote({ endpoint }: { endpoint: string }) {
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-[13px] font-medium text-text-primary leading-snug">
-            Preview: generation goes live shortly
+            Service momentarily unavailable
           </p>
           <p className="mt-1 text-[12px] text-text-muted leading-relaxed">
-            Everything you enter here is ready and runs unchanged the moment the pipeline is live.
-            Nothing you write is lost.
+            We couldn't reach the generator just now. Everything you entered is saved here — try again in a moment.
           </p>
           <p className="mt-2" title={`Backend endpoint pending: ${endpoint}`}>
             <span className="eyebrow text-text-muted/70 font-num">{endpoint}</span>

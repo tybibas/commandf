@@ -8,9 +8,12 @@ import type { Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline 
 const now = 1750000000000; // fixed epoch (no Date.now in fixtures → deterministic)
 const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
 
+// Mirrors the live backend /models roster (llm.py AVAILABLE_MODELS): Claude-only
+// today, Haiku the default. No Opus is served — the old mock's "Opus" was stale.
 export const MOCK_MODELS: ModelOption[] = [
-  { id: 'sonnet', name: 'Claude Sonnet' },
-  { id: 'opus', name: 'Claude Opus' },
+  { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', description: 'Fast, default', cost: '$' },
+  { id: 'claude-sonnet-4-20250514', name: 'Sonnet 4', description: 'Balanced', cost: '$$' },
+  { id: 'claude-sonnet-4-5-20250929', name: 'Sonnet 4.5', description: 'Most capable', cost: '$$$' },
 ];
 
 export const MOCK_SESSIONS: Session[] = [

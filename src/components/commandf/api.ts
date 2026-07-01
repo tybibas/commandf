@@ -2,9 +2,9 @@
 //
 // Thin wrapper over the Modal FastAPI service. Auth pattern (Supabase JWT as a
 // Bearer token) is lifted verbatim from the original CommandFPage. Every shape
-// here is documented in execution/commandf/UI_ENDPOINT_CONTRACTS.md — the three
-// `*Stub` endpoints (deck / survey / upload) are not live yet and throw a typed
-// NotImplemented so their surfaces can render an honest "preview" state.
+// here is documented in execution/commandf/UI_ENDPOINT_CONTRACTS.md. All
+// endpoints (chat, deck, survey, upload) are live; the EndpointPendingError path
+// is a graceful fallback for a 404/501 (backend unreachable), not a "coming soon".
 
 import { supabase } from '../../lib/supabase';
 
@@ -34,7 +34,9 @@ export type Message = {
 };
 
 export type Session = { id: string; title: string; updated_at: string };
-export type ModelOption = { id: string; name: string; cost?: string };
+// `description` + `cost` come straight from the backend /models roster and let
+// the picker explain what each model is scoped to (e.g. "Fast" / "Most capable").
+export type ModelOption = { id: string; name: string; description?: string; cost?: string };
 
 export type KnowledgeFile = { file_name: string; chunks: number; modified: string | null };
 
@@ -125,10 +127,11 @@ export class NotConfiguredError extends Error {
 export class NotSignedInError extends Error {
   constructor() { super('Not signed in — please re-authenticate.'); this.name = 'NotSignedInError'; }
 }
-/** Thrown by the three endpoints that don't exist on the backend yet. */
+/** Thrown when an endpoint returns 404/501 — i.e. the backend is unreachable,
+ * not that the feature is unbuilt. Surfaces a graceful "try again" state. */
 export class EndpointPendingError extends Error {
   constructor(endpoint: string) {
-    super(`${endpoint} is not available yet — backend endpoint pending.`);
+    super(`${endpoint} is currently unavailable.`);
     this.name = 'EndpointPendingError';
   }
 }
