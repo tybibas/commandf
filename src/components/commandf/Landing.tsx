@@ -28,20 +28,21 @@ function ModeChip({
 }: {
   icon: typeof Search; label: string; chip?: string; onClick: () => void;
 }) {
+  // Flat, quiet secondary action — no fill, no shadow, no lift. The composer is
+  // the only elevated object on the canvas; these sit under it as calm text.
   return (
     <button
       type="button"
       onClick={onClick}
       className={[
-        'group inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-elevated',
-        'px-3.5 py-1.5 text-caption text-text-secondary shadow-float',
-        'hover:text-text-primary hover:border-border-hover hover:-translate-y-px hover:shadow-float-hover',
-        'transition-all', MOTION, FOCUS,
+        'group inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1.5',
+        'text-caption text-text-muted hover:text-text-primary transition-colors',
+        MOTION, FOCUS,
       ].join(' ')}
     >
-      <Icon className="w-3.5 h-3.5 text-text-muted group-hover:text-text-secondary transition-colors" strokeWidth={1.75} aria-hidden />
+      <Icon className="w-3.5 h-3.5 opacity-70 group-hover:opacity-100 transition-opacity" strokeWidth={1.75} aria-hidden />
       <span>{label}</span>
-      {chip && <span className="font-mono text-micro text-text-muted">{chip}</span>}
+      {chip && <span className="font-mono text-micro opacity-60">{chip}</span>}
     </button>
   );
 }
@@ -69,41 +70,36 @@ export default function Landing({
             {composer}
           </div>
 
-          {/* Tool chips, directly under the input */}
-          <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2 animate-fade-in" style={{ animationDelay: '60ms' }}>
-            <ModeChip icon={Search} label="Ask the memory" onClick={() => onMode('ask')} />
+          {/* Two quiet secondary modes, directly under the input — flat text, no boxes */}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1 animate-fade-in" style={{ animationDelay: '60ms' }}>
             <ModeChip icon={Presentation} label="Build a deck" chip="PPTX" onClick={() => onMode('deck')} />
+            <span className="text-text-muted/40 select-none" aria-hidden>·</span>
             <ModeChip icon={Table2} label="Survey deck" chip="XLSX" onClick={() => onMode('survey')} />
           </div>
 
-          {/* Example prompts — quiet, clickable rows */}
+          {/* Example prompts — borderless, near-invisible until read. No box, no
+              eyebrow, no numerals: the calm empty-state of Claude / ChatGPT. */}
           {suggestions.length > 0 && (
-            <div className="mt-10 animate-fade-in" style={{ animationDelay: '120ms' }}>
-              <p className="eyebrow text-text-muted mb-2.5 px-0.5">Start here</p>
-              <div className="overflow-hidden divide-y divide-hairline hairline-t hairline-b">
-                {suggestions.slice(0, 4).map((q, i) => (
-                  <button
-                    key={q}
-                    type="button"
-                    onClick={() => onSelectPrompt(q)}
-                    className={`group w-full flex items-start gap-3 px-1 py-3 text-left hover:px-3 hover:bg-bg-secondary/50 rounded-control transition-all ${MOTION} ${FOCUS}`}
-                  >
-                    <span className="font-num text-caption text-text-muted/70 tabular-nums mt-0.5 shrink-0 w-4 text-right group-hover:text-text-secondary transition-colors">
-                      {i + 1}
-                    </span>
-                    <span className="flex-1 min-w-0 text-body text-text-secondary group-hover:text-text-primary leading-snug transition-colors">
-                      {q}
-                    </span>
-                    <ArrowUpRight className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/0 group-hover:text-text-muted transition-colors" strokeWidth={1.5} aria-hidden />
-                  </button>
-                ))}
-              </div>
+            <div className="mt-12 flex flex-col animate-fade-in" style={{ animationDelay: '120ms' }}>
+              {suggestions.slice(0, 3).map((q) => (
+                <button
+                  key={q}
+                  type="button"
+                  onClick={() => onSelectPrompt(q)}
+                  className={`group w-full flex items-center gap-2.5 py-2.5 text-left transition-colors ${MOTION} ${FOCUS}`}
+                >
+                  <span className="flex-1 min-w-0 text-body text-text-muted group-hover:text-text-primary leading-snug transition-colors">
+                    {q}
+                  </span>
+                  <ArrowUpRight className="w-3.5 h-3.5 shrink-0 text-text-muted/0 group-hover:text-text-muted/70 transition-colors" strokeWidth={1.5} aria-hidden />
+                </button>
+              ))}
             </div>
           )}
 
           {/* Knowledge footnote — tiny, unobtrusive */}
           {!loading && (
-            <p className="mt-8 text-center text-caption text-text-muted animate-fade-in" style={{ animationDelay: '160ms' }}>
+            <p className="mt-10 text-center text-caption text-text-muted/80 animate-fade-in" style={{ animationDelay: '160ms' }}>
               {docs.toLocaleString()} document{docs === 1 ? '' : 's'} indexed
               {lastSync && <> · synced {timeAgo(lastSync)}</>}
             </p>

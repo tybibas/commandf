@@ -62,7 +62,7 @@ export default function Composer({
 
   return (
     <div
-      className="relative rounded-[26px] bg-bg-elevated px-5 py-3 border border-border-light shadow-float transition-all duration-base ease-out-expo focus-within:border-text-primary/45 focus-within:shadow-float-hover"
+      className="relative rounded-[26px] bg-bg-secondary px-5 py-3 border border-border transition-all duration-base ease-out-expo focus-within:bg-bg-elevated focus-within:border-text-primary/40 focus-within:shadow-float"
     >
       <div className="flex items-end gap-3">
         <textarea
