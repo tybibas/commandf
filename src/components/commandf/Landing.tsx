@@ -74,7 +74,7 @@ export default function Landing({
                   onClick={onClick}
                   className={`group inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-primary px-3 py-1.5 text-caption text-text-secondary hover:text-text-primary hover:border-border-hover hover:bg-bg-secondary transition-colors ${MOTION} ${FOCUS}`}
                 >
-                  <Icon className="w-3.5 h-3.5 text-text-muted group-hover:text-text-secondary transition-colors" strokeWidth={1.75} />
+                  <Icon className="w-3.5 h-3.5 text-brand-ink transition-colors" strokeWidth={1.75} />
                   {label}
                 </button>
               ))}

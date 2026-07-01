@@ -3,8 +3,6 @@ import { ArrowUp, Loader2, ChevronDown, Check } from 'lucide-react';
 import type { ModelOption } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
-// Primary action = neutral ink (gold is reserved for "operator decision required").
-const INK_BTN = 'bg-text-primary text-bg-primary hover:bg-text-primary/90 transition-colors duration-fast ease-out-expo';
 
 // Single source of truth for the auto-grow ceiling. Used both in the JS height
 // calculation and as the JS-enforced cap (max-h-48 removed from className).
@@ -148,7 +146,11 @@ export default function Composer({
             type="button"
             onClick={onSubmit}
             disabled={disabled || !value.trim() || sending}
-            className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full active:scale-95 disabled:opacity-40 disabled:active:scale-100 ${INK_BTN} ${FOCUS}`}
+            className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-fast ease-out-expo active:scale-95 disabled:active:scale-100 ${
+              !disabled && !sending && value.trim()
+                ? 'bg-brand text-white hover:bg-brand-hover'   // Actionist orange — lit when ready to send
+                : 'bg-bg-tertiary text-text-muted'             // quiet at rest
+            } ${FOCUS}`}
             aria-label="Send"
           >
             {sending
