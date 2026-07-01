@@ -76,9 +76,9 @@ export type ChatResponse = {
   session_id?: string;
 };
 
-// Job shapes for the generation endpoints. The backend emits `done` on success
-// (older code used `complete`) — both are accepted by useJob. `progress` is a
-// human-readable status line ("planning storyline…", "writing slides…").
+// Job shapes for the generation endpoints. The backend emits `complete` on
+// success (`done` also accepted for forward-compat) — both handled by useJob.
+// `progress` is a human-readable status line ("planning storyline…").
 export type JobStatus = {
   status: 'queued' | 'running' | 'complete' | 'done' | 'error';
   progress?: string;
@@ -90,6 +90,32 @@ export type JobStatus = {
   placeholders?: string[];
   error?: string;
 };
+
+// Deck outline (Stage-1 plan) — returned SYNCHRONOUSLY by /generate-deck/outline.
+// The consultant edits it (reorder/delete/retitle) and posts `plan` back verbatim
+// as `approved_plan` to /generate-deck, which then skips the re-plan (no double spend).
+export type OutlineSource = { n: number; file: string; link?: string; snippet?: string };
+export type OutlineSlide = {
+  slide_template: string;
+  lede: string;
+  must_show?: string;
+  evidence_ns?: number[];
+  sources?: OutlineSource[];
+};
+export type DeckOutline = {
+  deliverable_type?: string;
+  governing_thought: string;
+  organizing_construct: string;
+  lines_of_argument: string[];
+  slides: OutlineSlide[];
+  sources_pool: OutlineSource[];
+  plan: Record<string, unknown>;
+};
+
+/** The three deliverable types the deck generator validates as a structured enum
+ * — any other value returns HTTP 400. Every other UI chip is folded into the
+ * request prose instead (the planner is LLM-driven and adapts). See DeckSurface. */
+export const DECK_ENUM_TYPES = new Set(['proposal', 'engagement_recap', 'pov_memo']);
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -243,20 +269,50 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
   return json<{ job_id: string }>(res);
 }
 
+/** Stage-1 outline — cheap (~5-8s), SYNCHRONOUS, no job. Throws EndpointPending
+ * on 404/501; on 422 (`outline_failed` — no corpus evidence) json() throws with
+ * the backend detail so the surface can show an honest error. */
+export async function generateDeckOutline(input: {
+  request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
+}): Promise<DeckOutline> {
+  const url = requireUrl();
+  const token = await bearer();
+  const res = await fetch(`${url}/generate-deck/outline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    body: JSON.stringify(input),
+  });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/outline');
+  return json<DeckOutline>(res);
+}
+
 export async function generateDeck(input: {
   request: string; deliverable_type?: string; session_id?: string | null; client_slug?: string;
-  // Slide-count + chunked-build fields. `request` also carries this context in prose
-  // so generation works before the backend formalizes these; see docs/BACKEND_TODOS.md.
+  // When present, the backend SKIPS Stage-1 re-planning (no double spend). It is
+  // the (edited) `plan` object from generateDeckOutline; the backend also unwraps
+  // a full { plan: {...} } envelope.
+  approved_plan?: Record<string, unknown>;
+  // Length / chunked-build hints. The backend reads these from `request` prose;
+  // sent structured too for forward-compat (unknown fields are ignored server-side).
   slide_count?: number; deck_scope?: 'full' | 'section'; section_start?: number;
 }): Promise<{ job_id: string }> {
-  return postJob('/generate', JSON.stringify(input), false);
+  return postJob('/generate-deck', JSON.stringify(input), false);
 }
 
 export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   const url = requireUrl();
-  const res = await fetch(`${url}/generate/${encodeURIComponent(jobId)}`, { headers: await authHeaders() });
-  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate');
+  const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
   return json<JobStatus>(res);
+}
+
+/** Builds a download href an `<a download>` can use: the download endpoints accept
+ * the JWT as `?token=` because an anchor can't send an Authorization header. */
+export async function authedDownloadUrl(downloadUrl: string): Promise<string> {
+  const token = await currentToken();
+  if (!token) return downloadUrl;
+  const sep = downloadUrl.includes('?') ? '&' : '?';
+  return `${downloadUrl}${sep}token=${encodeURIComponent(token)}`;
 }
 
 export async function generateSurveyCompendium(file: File, title?: string): Promise<{ job_id: string }> {
@@ -273,7 +329,9 @@ export async function surveyCompendiumStatus(jobId: string): Promise<JobStatus> 
   return json<JobStatus>(res);
 }
 
-export async function uploadDocument(file: File, metadata?: Record<string, unknown>): Promise<{ file_id: string; file_name: string; chunks_added?: number; status: string }> {
+/** Ingest a document → 202 { file_id, file_name, status:"indexing" }. Poll
+ * uploadDocumentStatus(file_id) until `complete`; the doc is then searchable in /chat. */
+export async function uploadDocument(file: File, metadata?: Record<string, unknown>): Promise<{ file_id: string; file_name: string; status: string }> {
   const url = requireUrl();
   const token = await bearer();
   const form = new FormData();
@@ -283,5 +341,12 @@ export async function uploadDocument(file: File, metadata?: Record<string, unkno
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
   });
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
-  return json<{ file_id: string; file_name: string; chunks_added?: number; status: string }>(res);
+  return json<{ file_id: string; file_name: string; status: string }>(res);
+}
+
+export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }> {
+  const url = requireUrl();
+  const res = await fetch(`${url}/upload/${encodeURIComponent(fileId)}/status`, { headers: await authHeaders() });
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
+  return json<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }>(res);
 }

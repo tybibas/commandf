@@ -10,6 +10,7 @@ import '../index.css';
 import { supabase } from '../lib/supabase';
 import {
   MOCK_MODELS, MOCK_SESSIONS, MOCK_BRIEFING, MOCK_CHAT_RESPONSE, MOCK_HISTORY,
+  MOCK_OUTLINE, MOCK_DECK_STATUS, MOCK_UPLOAD_STATUS,
 } from './fixtures';
 
 // ── Stub the Supabase session (authHeaders/currentToken succeed) ─────────────
@@ -39,7 +40,20 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (path.includes('/sources/status')) return jsonRes({ google_drive: true, dropbox: false });
     if (path.includes('/sync/status')) return jsonRes({ status: 'complete' });
     if (path.includes('/sync')) return jsonRes({ ok: true });
-    // Generation + upload endpoints intentionally 404 → honest "preview" state.
+    // Deck: outline (sync) → build (job) → status.
+    if (path.includes('/generate-deck/outline')) {
+      await new Promise((r) => setTimeout(r, 600)); // let the "Drafting outline…" state show
+      return jsonRes(MOCK_OUTLINE);
+    }
+    if (path.includes('/generate-deck') && path.includes('/status')) return jsonRes(MOCK_DECK_STATUS);
+    if (path.includes('/generate-deck')) return jsonRes({ job_id: 'mock-deck-job', status: 'queued' }, 202);
+    // Survey compendium: job → status (reuses the deck status shape + sheet_count).
+    if (path.includes('/survey-compendium') && path.includes('/status')) return jsonRes({ ...MOCK_DECK_STATUS, sheet_count: 8, title: 'Survey Compendium' });
+    if (path.includes('/survey-compendium')) return jsonRes({ job_id: 'mock-survey-job', status: 'queued' }, 202);
+    // Upload: 202 indexing → status complete.
+    if (path.includes('/upload') && path.includes('/status')) return jsonRes(MOCK_UPLOAD_STATUS);
+    if (path.includes('/upload')) return jsonRes({ file_id: 'mock-file', file_name: 'upload.pdf', status: 'indexing' }, 202);
+    // Anything still unwired → honest "preview" state.
     return jsonRes({ detail: 'pending' }, 404);
   }
   return realFetch(input as any, init);

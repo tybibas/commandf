@@ -3,7 +3,7 @@
 // to exercise every surface through the REAL api.ts contract with a stubbed
 // fetch + Supabase session, so screenshots reflect the real components.
 
-import type { Briefing, Session, ModelOption, Source, ChatResponse } from '../components/commandf/api';
+import type { Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline } from '../components/commandf/api';
 
 const now = 1750000000000; // fixed epoch (no Date.now in fixtures → deterministic)
 const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
@@ -69,3 +69,39 @@ export const MOCK_HISTORY = [
   { role: 'user', content: 'What is the single most reusable lesson across our last five engagements?', sources: [] },
   { role: 'assistant', content: MOCK_ANSWER_MD, sources: MOCK_SOURCES },
 ];
+
+// Stage-1 outline — what /generate-deck/outline returns synchronously.
+const OUTLINE_SOURCES = [
+  { n: 1, file: 'Cardinal Mutual — Engagement Retrospective.pdf', link: '#', snippet: 'Member-first mandate reframed as a growth thesis.' },
+  { n: 2, file: 'Proof Points & Case Studies Library.docx', link: '#', snippet: 'Sequencing quick wins before structural change.' },
+  { n: 3, file: 'Stonepoint Repositioning — Board Deck.pptx', link: '#', snippet: 'One North-Star metric, nine dashboards to one.' },
+];
+export const MOCK_OUTLINE: DeckOutline = {
+  deliverable_type: 'board_update',
+  governing_thought: 'The value-creation plan is on track: quick wins are banked, one structural decision remains, and two risks need the board’s eyes.',
+  organizing_construct: 'executive_summary',
+  lines_of_argument: [
+    'Quick operational wins landed on schedule',
+    'The structural decision is now de-risked and ready',
+    'Two tracked risks need a board call',
+  ],
+  slides: [
+    { slide_template: 'exec_summary', lede: 'Where the plan stands, and the one decision we need today', must_show: 'Status + the ask', evidence_ns: [1], sources: [OUTLINE_SOURCES[0]] },
+    { slide_template: 'status_dashboard', lede: 'Quick wins are banked — 45-day operational targets all met', must_show: 'Operational KPIs vs plan', evidence_ns: [2], sources: [OUTLINE_SOURCES[1]] },
+    { slide_template: 'scored_table', lede: 'The structural change is now de-risked and ready to authorize', must_show: 'Options scored', evidence_ns: [1, 2], sources: [OUTLINE_SOURCES[0], OUTLINE_SOURCES[1]] },
+    { slide_template: 'matrix_2x2', lede: 'Two risks we are tracking — and the mitigation on each', must_show: 'Risk / likelihood / mitigation', evidence_ns: [3], sources: [OUTLINE_SOURCES[2]] },
+    { slide_template: 'next_steps', lede: 'What we need from the board today, and what comes next', must_show: 'Decisions + owners + dates', evidence_ns: [], sources: [] },
+  ],
+  sources_pool: OUTLINE_SOURCES,
+  plan: { note: 'raw emit_plan echoed back as approved_plan' },
+};
+
+export const MOCK_DECK_STATUS = {
+  status: 'complete' as const,
+  slide_count: 5,
+  title: 'Q3 SteerCo Update — Value Creation Plan',
+  download_url: 'https://mock.local/generate-deck/mock-job/download',
+  placeholders: ['[PLACEHOLDER: confirm Q3 loss-ratio figure with the deal team]'],
+};
+
+export const MOCK_UPLOAD_STATUS = { status: 'complete' as const, chunks_indexed: 87 };

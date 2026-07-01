@@ -3,7 +3,7 @@ import {
   RefreshCw, Link2, FileText, UploadCloud, CheckCircle2, Loader2, Info, Cloud,
 } from 'lucide-react';
 import Sheet from '../ui/Sheet';
-import { uploadDocument, EndpointPendingError, type Briefing, type SourcesStatus } from './api';
+import { uploadDocument, uploadDocumentStatus, EndpointPendingError, type Briefing, type SourcesStatus } from './api';
 import { timeAgo } from './util';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -37,9 +37,21 @@ export default function KnowledgePanel({
     if (!f) return;
     setUploadState('uploading'); setUploadMsg(f.name); setUploadChunks(null);
     try {
-      const res = await uploadDocument(f);
-      setUploadChunks(typeof res.chunks_added === 'number' ? res.chunks_added : null);
-      setUploadState('done');
+      // POST → 202 {file_id, status:"indexing"}, then poll until complete.
+      const { file_id } = await uploadDocument(f);
+      const deadline = Date.now() + 3 * 60_000; // 3-minute safety valve
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const s = await uploadDocumentStatus(file_id);
+        if (s.status === 'complete') {
+          setUploadChunks(typeof s.chunks_indexed === 'number' ? s.chunks_indexed : null);
+          setUploadState('done');
+          return;
+        }
+        if (s.status === 'error') { setUploadState('error'); setUploadMsg(s.error || 'Indexing failed.'); return; }
+        if (Date.now() > deadline) { setUploadState('done'); return; } // still indexing — leave the "in background" copy
+        await new Promise((r) => setTimeout(r, 2500));
+      }
     } catch (e: any) {
       if (e instanceof EndpointPendingError) setUploadState('pending');
       else { setUploadState('error'); setUploadMsg(e?.message || 'Upload failed.'); }
@@ -128,10 +140,9 @@ export default function KnowledgePanel({
               <div className="flex items-start gap-2.5">
                 <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
                 <p className="text-caption leading-relaxed text-text-secondary">
-                  <span className="font-medium text-text-primary">Preview — upload endpoint pending.</span>{' '}
-                  Direct upload is wired to <code className="font-mono text-micro bg-bg-tertiary rounded-control px-1 py-0.5">POST /upload</code> but
-                  isn’t deployed yet. For now, add files to the connected Drive and re-index.
-                  Contract: <code className="font-mono text-micro text-text-muted">UI_ENDPOINT_CONTRACTS.md</code>.
+                  <span className="font-medium text-text-primary">Upload is momentarily unavailable.</span>{' '}
+                  Direct upload posts to <code className="font-mono text-micro bg-bg-tertiary rounded-control px-1 py-0.5">POST /upload</code>;
+                  if it isn’t responding, add files to the connected Drive and re-index instead.
                 </p>
               </div>
             </div>

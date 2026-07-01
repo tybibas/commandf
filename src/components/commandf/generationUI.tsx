@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers } from 'lucide-react';
-import type { JobStatus } from './api';
+import { authedDownloadUrl, type JobStatus } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
@@ -171,6 +171,16 @@ export function ResultPanel({
     typeof result.slide_count === 'number' ? `${result.slide_count} slides` : null;
   const heading = result.title || countLabel || `Generated ${kindLabel.toLowerCase()}`;
 
+  // The .pptx endpoints authenticate via `?token=` (an <a download> can't send a
+  // Bearer header). Resolve the signed href once the result arrives.
+  const [downloadHref, setDownloadHref] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!result.download_url) { setDownloadHref(null); return; }
+    authedDownloadUrl(result.download_url).then((href) => { if (alive) setDownloadHref(href); });
+    return () => { alive = false; };
+  }, [result.download_url]);
+
   return (
     <div className="mt-5 rounded-surface border border-border-light bg-bg-elevated overflow-hidden animate-slide-up shadow-float">
       <div className="px-5 py-4 flex items-start gap-3">
@@ -238,9 +248,10 @@ export function ResultPanel({
       {result.download_url && (
         <div className="px-5 py-4 border-t border-hairline">
           <a
-            href={result.download_url}
+            href={downloadHref ?? undefined}
             download
-            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-control text-body font-medium ${INK_BTN}`}
+            aria-disabled={!downloadHref}
+            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-control text-body font-medium ${INK_BTN} ${downloadHref ? '' : 'opacity-60 pointer-events-none'}`}
           >
             <Download className="w-4 h-4" /> Download .pptx
           </a>
