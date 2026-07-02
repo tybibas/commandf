@@ -12,23 +12,26 @@ function FullScreen({ children }: { children: React.ReactNode }) {
 
 /** Auth gate — mirrors the dashboard's App.tsx ordering exactly. */
 function Gate() {
-  const { user, session, loading, profileLoading, mustChangePassword, signOut } = useAuth();
+  const { user, session, loading, mustChangePassword, signOut } = useAuth();
 
-  // Resilience: if the session check / profile fetch hasn't resolved in 10s
-  // (e.g. a cold or degraded Supabase project timing out), stop spinning
-  // forever and fall through to the login screen so the user can retry.
+  // Resilience: if the INITIAL session check hasn't resolved in 10s (a cold or
+  // degraded Supabase project), stop spinning forever and fall through so the
+  // user can act. Note we only guard on `loading` (the session check) — NOT on
+  // profileLoading, because a signed-in session is enough to enter the app; the
+  // profile row is secondary and loads async (see below).
   const [gaveUp, setGaveUp] = useState(false);
   useEffect(() => {
-    if (!(loading || profileLoading)) { setGaveUp(false); return; }
+    if (!loading) { setGaveUp(false); return; }
     const t = setTimeout(() => setGaveUp(true), 10_000);
     return () => clearTimeout(t);
-  }, [loading, profileLoading]);
+  }, [loading]);
 
-  // Show spinner during initial session check OR while the profile row is
-  // being fetched after sign-in. The second condition is critical: without it,
-  // Gate keeps rendering CommandFLogin while the profile loads, leaving the
-  // form stuck in "Signing in…" if the profile row is missing or slow.
-  if ((loading || profileLoading) && !gaveUp) {
+  // Spinner ONLY during the initial session check. Once we know whether there is
+  // a session, we render immediately. We deliberately do NOT block on
+  // profileLoading: the session is sufficient to enter the app, and blocking the
+  // whole app behind a secondary profile query is exactly what caused the
+  // infinite spinner when that query timed out under DB load.
+  if (loading && !gaveUp) {
     return (
       <FullScreen>
         <div className="flex flex-col items-center gap-4">
@@ -39,11 +42,22 @@ function Gate() {
     );
   }
   if (session && mustChangePassword) return <SetPasswordScreen />;
-  if (!user) return <CommandFLogin />;
+  // A valid session is the source of truth for "signed in." Route to the app on
+  // the SESSION, not the profile row: if the profile query is still in flight or
+  // timed out, we still show the app (degraded — falls back to the email for the
+  // display name) rather than bouncing the user back to the login screen.
+  if (!session) return <CommandFLogin />;
 
-  // Display name from auth metadata (full_name), email as the final fallback.
+  // Display name: prefer the profile row's full_name, then the auth session's
+  // user_metadata.full_name, else undefined (the UI falls back to the email).
+  // Read from the session too so the header still names the user even when the
+  // profile row hasn't loaded (or timed out) yet.
   const userName: string | undefined =
-    (user as any)?.user_metadata?.full_name || undefined;
+    user?.full_name ||
+    (session.user?.user_metadata?.full_name as string | undefined) ||
+    undefined;
+  const userEmail: string | undefined =
+    user?.email ?? session.user?.email ?? undefined;
 
   // No planLabel: the workspace ("Actionist") already shows as the footer
   // wordmark, so the profile subtitle falls back to the email — name + email,
@@ -52,7 +66,7 @@ function Gate() {
     <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
       <CommandFPage
         userName={userName}
-        userEmail={user?.email ?? undefined}
+        userEmail={userEmail}
         onSignOut={signOut}
       />
     </div>

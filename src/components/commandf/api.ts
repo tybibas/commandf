@@ -52,6 +52,10 @@ export type Briefing = {
   engine_recs: { pending: number };
   knowledge: {
     doc_count: number; chunk_count: number;
+    // True when the counts are approximate/best-effort — the backend RPC fell
+    // back to planner stats because the exact scan couldn't finish under DB load.
+    // The UI labels the numbers "syncing…" instead of implying a genuine 0.
+    counts_stale?: boolean;
     files: KnowledgeFile[];
     last_sync_at?: string | null;
     last_sync_status?: string | null;

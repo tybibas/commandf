@@ -38,14 +38,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loadedUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    // Initial session check. getSession() reads the persisted session locally
+    // (no network), so this resolves fast even when the DB is under load. The
+    // profile fetch is deferred (see deferLoadProfile) so it can NEVER hang the
+    // initial `loading` flag — sign-in state is known the moment we have a
+    // session, independent of the secondary profile query.
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       if (session?.user) {
-        loadUserProfile(session.user.id);
+        setLoading(false);          // session known → stop the initial gate spinner immediately
+        deferLoadProfile(session.user.id);
       } else {
         setLoading(false);
       }
-    });
+    }).catch(() => setLoading(false)); // never leave `loading` stuck if getSession rejects
 
     const {
       data: { subscription },
@@ -70,26 +76,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setSession(session);
       if (session?.user) {
-        loadUserProfile(session.user.id);
+        setLoading(false);
+        deferLoadProfile(session.user.id);
       } else {
         loadedUserIdRef.current = null;
         setUser(null);
         setLoading(false);
+        setProfileLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Dispatch the profile fetch OUTSIDE the onAuthStateChange callback. supabase-js
+  // serializes auth work behind an internal navigator lock; awaiting ANY supabase
+  // call *inside* the callback deadlocks the client so the very next supabase
+  // request (here: the profile query) hangs forever — the documented cause of the
+  // "infinite spinner on sign-in." setTimeout(…, 0) lets the callback return and
+  // release the lock before the query runs.
+  // Ref: https://github.com/supabase/auth-js/issues/762
+  function deferLoadProfile(authUserId: string) {
+    setTimeout(() => { loadUserProfile(authUserId); }, 0);
+  }
 
   async function loadUserProfile(authUserId: string) {
     setProfileLoading(true);
     try {
+      // Hard cap the profile fetch. The profile row is SECONDARY (display name /
+      // role); the session alone is enough to enter the app. If the DB is slow /
+      // timing out under load, we must not block behind it — race the query
+      // against a timeout so `profileLoading` always resolves.
+      const withTimeout = <T,>(p: PromiseLike<T>, ms: number): Promise<T | null> =>
+        Promise.race([
+          Promise.resolve(p),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+        ]);
+
       // Primary lookup: by auth UUID
-      const { data, error } = await supabase
-        .from('quantifire_dashboard_users')
-        .select('*')
-        .eq('id', authUserId)
-        .maybeSingle();
+      const res = await withTimeout(
+        supabase.from('quantifire_dashboard_users').select('*').eq('id', authUserId).maybeSingle(),
+        8000,
+      );
+      if (res === null) {
+        // Timed out — enter the app degraded rather than spin. A later
+        // refreshUser() (or tab refocus) can populate the profile once the DB
+        // recovers. loadedUserIdRef stays unset so it WILL retry.
+        console.warn('Profile fetch timed out; entering app without profile row.');
+        return;
+      }
+      const { data, error } = res;
 
       if (error) {
         console.error('Error loading user profile:', error);
