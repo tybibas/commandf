@@ -91,6 +91,12 @@ export type JobStatus = {
   preview_urls?: string[];
   placeholders?: string[];
   plan?: Record<string, unknown>;  // carried on a completed deck so slides can be edited
+  // Chunked-build continuity markers (present on a section build). The UI offers
+  // "build next N slides" against the SAME plan while built_through < plan_total_slides.
+  deck_scope?: 'full' | 'section';
+  section_start?: number;
+  built_through?: number;       // next unbuilt slide index (0-based) of the full plan
+  plan_total_slides?: number;   // total content slides in the approved full plan
   error?: string;
 };
 
@@ -326,6 +332,10 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
 export async function generateDeckOutline(input: {
   request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
   file_ids?: string[];  // source-pinning: bias the evidence pool to these Drive docs
+  // HARD length constraint: plan a deck of ~target_slides content slides. The
+  // backend injects this into the emit_plan prompt so length is a REAL planner
+  // constraint. Omit for Auto (planner sizes the deck to the evidence).
+  target_slides?: number;
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
@@ -345,9 +355,18 @@ export async function generateDeck(input: {
   // a full { plan: {...} } envelope.
   approved_plan?: Record<string, unknown>;
   file_ids?: string[];  // source-pinning: bias the evidence pool to these Drive docs
-  // Length / chunked-build hints. The backend reads these from `request` prose;
-  // sent structured too for forward-compat (unknown fields are ignored server-side).
-  slide_count?: number; deck_scope?: 'full' | 'section'; section_start?: number;
+  // Length + chunked-build — all REAL server-side params (contract, not prose):
+  //   target_slides  HARD planner length constraint (full-plan planning only;
+  //                  ignored when approved_plan is supplied — the plan fixed it).
+  //   deck_scope     'full' (whole plan) | 'section' (author only a slice).
+  //   section_start  first slide index of the slice (0-based) when scope='section'.
+  //   section_size   slides in the slice (<=0 / omit = to the end).
+  // Continuity: "build next N slides" carries the SAME approved_plan +
+  // deck_scope:'section' + the next section_start; the backend re-slices, no re-plan.
+  target_slides?: number;
+  deck_scope?: 'full' | 'section';
+  section_start?: number;
+  section_size?: number;
 }): Promise<{ job_id: string }> {
   return postJob('/generate-deck', JSON.stringify(input), false);
 }

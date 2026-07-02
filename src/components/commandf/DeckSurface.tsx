@@ -66,6 +66,10 @@ export default function DeckSurface({
   const [brief, setBrief] = useState(initialBrief ?? '');
   const [length, setLength] = useState('');
   const [lenCustom, setLenCustom] = useState('');
+  // Build mode: 'full' authors the whole deck; 'sections' authors it in chunks of
+  // `sectionSize`, one at a time, with a "build next N slides" continue action.
+  const [deckMode, setDeckMode] = useState<'full' | 'sections'>('full');
+  const [sectionSize, setSectionSize] = useState(5);
 
   const [outline, setOutline] = useState<Outline | null>(null);
   const [outlinePhase, setOutlinePhase] = useState<OutlinePhase>('idle');
@@ -100,13 +104,17 @@ export default function DeckSurface({
     return `${prefix}${brief.trim()}${lengthProse}`;
   };
 
+  // In-sections mode authors the FIRST chunk on the initial build; the size <= 0
+  // sentinel (or 'full' mode) authors the whole deck.
+  const chunkSize = deckMode === 'sections' && sectionSize > 0 ? sectionSize : 0;
+
   const draftOutline = async () => {
     if (!canGo || outlinePhase === 'loading') return;
     setOutlinePhase('loading'); setOutlineError('');
     try {
       const o = await generateDeckOutline({
         request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-        session_id: sessionId, file_ids: fileIds,
+        session_id: sessionId, file_ids: fileIds, target_slides: fullCount,
       });
       setOutline(o); setOutlinePhase('idle');
     } catch (e: any) {
@@ -119,8 +127,9 @@ export default function DeckSurface({
     setBuiltPlan(approvedPlan);
     job.run(() => generateDeck({
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-      session_id: sessionId, approved_plan: approvedPlan, slide_count: fullCount,
-      file_ids: fileIds,
+      session_id: sessionId, approved_plan: approvedPlan, target_slides: fullCount,
+      deck_scope: deckMode === 'sections' ? 'section' : 'full',
+      section_start: 0, section_size: chunkSize, file_ids: fileIds,
     }));
   };
 
@@ -128,10 +137,27 @@ export default function DeckSurface({
     if (!canGo) return;
     // Direct build has no human-approved plan; per-slide edit becomes available
     // once the outline echoes its plan (it is carried on the job result too).
+    // Sections mode needs an approved plan to slice — a direct build always
+    // authors the whole deck (no plan to chunk).
     setBuiltPlan((job.result?.plan as Record<string, unknown>) ?? null);
     job.run(() => generateDeck({
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-      session_id: sessionId, slide_count: fullCount, file_ids: fileIds,
+      session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
+    }));
+  };
+
+  // ── Server-side continuity: author the NEXT slice of the SAME approved plan ──
+  // No re-plan — carries the stored builtPlan + the next section_start (the built-
+  // through marker the last build returned). Available until the full plan is authored.
+  const buildNextSlice = () => {
+    const plan = builtPlan ?? (job.result?.plan as Record<string, unknown> | undefined);
+    const nextStart = (job.result?.built_through as number | undefined) ?? 0;
+    if (!plan) return;
+    setEditedResult(null);
+    job.run(() => generateDeck({
+      request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
+      session_id: sessionId, approved_plan: plan, deck_scope: 'section',
+      section_start: nextStart, section_size: sectionSize, file_ids: fileIds,
     }));
   };
 
@@ -175,7 +201,13 @@ export default function DeckSurface({
           {job.phase === 'error' ? (
             <ErrorPanel message={job.error || 'Generation failed.'} onRetry={() => job.reset()} />
           ) : job.phase === 'complete' && (editedResult ?? job.result) ? (
-            <ResultPanel result={(editedResult ?? job.result)!} kindLabel="Deck" onReset={resetAll} slideEdit={slideEdit} />
+            <ResultPanel
+              result={(editedResult ?? job.result)!}
+              kindLabel="Deck"
+              onReset={resetAll}
+              slideEdit={slideEdit}
+              secondaryAction={continueAction()}
+            />
           ) : job.phase === 'pending' ? (
             <PendingBuildNote />
           ) : (
@@ -232,6 +264,32 @@ export default function DeckSurface({
           )}
         </div>
 
+        {/* Build mode: full deck vs. in sections (chunked, continue-able) */}
+        <div className="mt-4 flex items-center gap-2 flex-wrap">
+          <span className="eyebrow text-text-muted mr-1">Build</span>
+          {([['full', 'Full deck'], ['sections', 'In sections']] as const).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setDeckMode(id)} aria-pressed={deckMode === id}
+              className={`px-2.5 py-1 rounded-control text-caption font-medium transition-colors ${MOTION} ${FOCUS} ${deckMode === id ? CHIP_ON : CHIP_OFF}`}>
+              {label}
+            </button>
+          ))}
+          {deckMode === 'sections' && (
+            <span className="inline-flex items-center gap-1.5 text-caption text-text-secondary">
+              <span className="text-text-muted">slides per section</span>
+              <input type="number" min={1} inputMode="numeric" value={sectionSize}
+                onChange={(e) => setSectionSize(Math.max(1, Number(e.target.value) || 1))}
+                aria-label="Slides per section" className={NUM_INPUT} />
+            </span>
+          )}
+        </div>
+        {deckMode === 'sections' && (
+          <p className="mt-2 text-caption text-text-muted leading-relaxed">
+            Section 1: slides 1–{fullCount ? Math.min(sectionSize, fullCount) : sectionSize}
+            {fullCount ? ` of ~${fullCount}` : ''}. The full deck is planned; you build and
+            review one section at a time, then continue to the next.
+          </p>
+        )}
+
         {/* Brief */}
         <div className="mt-5">
           <div className="flex items-center justify-between mb-1.5">
@@ -280,6 +338,20 @@ export default function DeckSurface({
       </div>
     </Shell>
   );
+
+  // "Build next N slides" — offered only while the approved plan has unbuilt
+  // slides (built_through < plan_total_slides) and a per-slide edit isn't running.
+  function continueAction(): { label: string; onClick: () => void } | undefined {
+    const r = editedResult ?? job.result;
+    const builtThrough = r?.built_through;
+    const total = r?.plan_total_slides;
+    if (typeof builtThrough !== 'number' || typeof total !== 'number') return undefined;
+    if (builtThrough >= total) return undefined;
+    if (editBusy !== null) return undefined;
+    const remaining = total - builtThrough;
+    const n = Math.min(sectionSize, remaining);
+    return { label: `Build next ${n} slide${n === 1 ? '' : 's'}`, onClick: buildNextSlice };
+  }
 
   function resetAll() {
     setOutline(null); setOutlinePhase('idle'); setOutlineError('');
