@@ -27,6 +27,19 @@ export default function KnowledgePanel({
   const k = briefing?.knowledge;
   const driveConnected = sourcesStatus?.google_drive ?? k?.drive_connected ?? false;
   const files = k?.files ?? [];
+  // Distinguish "the count query hasn't returned or is best-effort" from a
+  // genuine empty corpus. Two cases warrant a "syncing…" treatment rather than
+  // a hard "0" (which reads as "you have no files"):
+  //   1. briefing null / knowledge absent — the /briefing call itself failed.
+  //   2. counts_stale — the RPC returned an APPROXIMATE count (exact scan
+  //      couldn't finish under DB write load); doc_count is unavailable.
+  const countPending = !k || !!k.counts_stale;
+  // Passages still shows the (approximate) number when we have one; documents
+  // shows `—` when unavailable rather than a misleading 0.
+  const fmtDocs = (n: number | undefined) =>
+    (!k || !n ? (countPending ? '—' : '0') : n.toLocaleString());
+  const fmtChunks = (n: number | undefined) =>
+    (!k ? '—' : (n ?? 0).toLocaleString());
 
   const [uploadState, setUploadState] = useState<UploadState>('idle');
   const [uploadMsg, setUploadMsg] = useState('');
@@ -66,13 +79,21 @@ export default function KnowledgePanel({
         <div className="flex items-stretch divide-x divide-border-light rounded-surface border border-border-light overflow-hidden">
           <div className="flex-1 px-4 py-3">
             <p className="eyebrow text-text-muted mb-1">Documents</p>
-            <p className="font-num text-2xl tabular-nums leading-none text-text-primary">{(k?.doc_count ?? 0).toLocaleString()}</p>
+            <p className="font-num text-2xl tabular-nums leading-none text-text-primary">{fmtDocs(k?.doc_count)}</p>
           </div>
           <div className="flex-1 px-4 py-3">
             <p className="eyebrow text-text-muted mb-1">Passages</p>
-            <p className="font-num text-2xl tabular-nums leading-none text-text-primary">{(k?.chunk_count ?? 0).toLocaleString()}</p>
+            <p className="font-num text-2xl tabular-nums leading-none text-text-primary">{fmtChunks(k?.chunk_count)}</p>
           </div>
         </div>
+        {countPending && (
+          <p className="-mt-4 text-caption text-text-muted flex items-center gap-1.5">
+            <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} aria-hidden />
+            {k?.counts_stale
+              ? 'Exact counts are catching up while the corpus is indexing — the passage total is approximate for now.'
+              : 'Syncing the index count… if it doesn’t appear, the corpus is busy indexing — try Re-index in a moment.'}
+          </p>
+        )}
 
         {/* Sources */}
         <section>

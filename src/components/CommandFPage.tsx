@@ -153,7 +153,15 @@ export function CommandFPage({
   const notConfigured = !COMMANDF_URL;
 
   const loadBriefing = useCallback(async (cc: string) => {
-    const b = await fetchBriefing(cc);
+    // The briefing includes the corpus count, whose RPC can time out under heavy
+    // DB write load. fetchBriefing swallows that to null; retry once after a short
+    // backoff so a transient timeout self-heals (the KB count fills in) without
+    // the user having to reload. Never throws.
+    let b = await fetchBriefing(cc);
+    if (!b) {
+      await new Promise((r) => setTimeout(r, 4000));
+      b = await fetchBriefing(cc);
+    }
     if (b) setBriefing(b);
   }, []);
 
