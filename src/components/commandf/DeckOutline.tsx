@@ -5,6 +5,11 @@ import {
 import type { DeckOutline as Outline, OutlineSlide } from './api';
 import SlideSkeleton from './SlideSkeleton';
 
+// Stable per-slide id for React keys — avoids index-keying when slides reorder/delete.
+type SlidewithId = OutlineSlide & { _stableId: string };
+let _slideIdCounter = 0;
+const withId = (s: OutlineSlide): SlidewithId => ({ ...s, _stableId: `slide-${++_slideIdCounter}` });
+
 const CHIP = 'px-2.5 py-1 rounded-[5px] text-caption font-medium capitalize transition-colors';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -30,7 +35,7 @@ export default function DeckOutline({
   building?: boolean;
 }) {
   const [thought, setThought] = useState(outline.governing_thought);
-  const [slides, setSlides] = useState<OutlineSlide[]>(outline.slides);
+  const [slides, setSlides] = useState<SlidewithId[]>(() => outline.slides.map(withId));
   const [view, setView] = useState<'storyline' | 'layout'>('storyline');
   const [focusIndex, setFocusIndex] = useState<number | null>(null);
 
@@ -117,7 +122,7 @@ export default function DeckOutline({
                 {slides.map((s, i) => {
                   const grounded = (s.sources?.length ?? 0) > 0;
                   return (
-                    <button key={i} type="button" onClick={() => { setView('storyline'); setFocusIndex(i); }}
+                    <button key={s._stableId} type="button" onClick={() => { setView('storyline'); setFocusIndex(i); }}
                       className={`group text-left rounded-surface p-1.5 border border-transparent hover:border-border-light hover:bg-bg-secondary/40 transition-colors ${MOTION} ${FOCUS}`}>
                       <div className="relative">
                         <SlideSkeleton template={s.slide_template} />
@@ -134,7 +139,7 @@ export default function DeckOutline({
             ) : (
             <div className="space-y-2">
             {slides.map((s, i) => (
-              <div key={i} id={`sl-${i}`} className={`group rounded-surface border bg-bg-secondary/40 px-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-brand' : 'border-border-light'}`}>
+              <div key={s._stableId} id={`sl-${i}`} className={`group rounded-surface border bg-bg-secondary/40 px-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-brand' : 'border-border-light'}`}>
                 <span className="mt-0.5 shrink-0 font-num text-caption text-text-muted tabular-nums w-5 text-right">{i + 1}</span>
                 <div className="flex-1 min-w-0">
                   <input value={s.lede} onChange={(e) => retitle(i, e.target.value)} disabled={building} aria-label={`Slide ${i + 1} title`}

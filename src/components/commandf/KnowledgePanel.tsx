@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   RefreshCw, Link2, FileText, UploadCloud, CheckCircle2, Loader2, Info, Cloud,
 } from 'lucide-react';
@@ -45,6 +45,8 @@ export default function KnowledgePanel({
   const [uploadMsg, setUploadMsg] = useState('');
   const [uploadChunks, setUploadChunks] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const doUpload = async (f: File | null) => {
     if (!f) return;
@@ -55,7 +57,9 @@ export default function KnowledgePanel({
       const deadline = Date.now() + 3 * 60_000; // 3-minute safety valve
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        if (!mountedRef.current) return;
         const s = await uploadDocumentStatus(file_id);
+        if (!mountedRef.current) return;
         if (s.status === 'complete') {
           setUploadChunks(typeof s.chunks_indexed === 'number' ? s.chunks_indexed : null);
           setUploadState('done');
@@ -66,6 +70,7 @@ export default function KnowledgePanel({
         await new Promise((r) => setTimeout(r, 2500));
       }
     } catch (e: any) {
+      if (!mountedRef.current) return;
       if (e instanceof EndpointPendingError) setUploadState('pending');
       else { setUploadState('error'); setUploadMsg(e?.message || 'Upload failed.'); }
     }

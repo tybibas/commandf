@@ -165,7 +165,7 @@ export default function Conversation({ messages, sending, steps, onReuse, onBuil
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 scrollbar-thin">
       <div className="max-w-prose-tight mx-auto space-y-8">
         {messages.map((m, i) => (
-          <MessageRow key={`${m.role}-${i}-${m.content.length}`} m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
+          <MessageRow key={m._key ?? `${m.role}-${i}`} m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
         ))}
         {sending && (
           <div className="flex justify-start">

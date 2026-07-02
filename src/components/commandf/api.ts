@@ -31,6 +31,8 @@ export type Message = {
   content: string;
   sources?: Source[];
   error?: boolean;
+  /** Stable React key assigned by the UI at insertion time. Never from the backend. */
+  _key?: string;
 };
 
 export type Session = { id: string; title: string; updated_at: string };
@@ -269,7 +271,7 @@ export async function fetchSessions(): Promise<LoadResult<Session[]>> {
   try {
     const url = requireUrl();
     const res = await fetchWithTimeout(
-      `${url}/sessions`, { headers: await authHeaders() }, T_FAST, 'Loading conversations',
+      `${url}/sessions`, { headers: await authHeaders(), cache: 'no-store' }, T_FAST, 'Loading conversations',
     );
     if (!res.ok) {
       if (res.status === 401) return { ok: false, error: new NotSignedInError() };
@@ -336,41 +338,78 @@ export async function sendChat(
   return json<ChatResponse>(res);
 }
 
+/** Thrown when the caller aborts the stream via the returned controller. */
+export class StreamAbortedError extends Error {
+  constructor() { super('Stream cancelled.'); this.name = 'StreamAbortedError'; }
+}
+
 /** Streaming chat: invokes `onStep` per live progress event and resolves with the
  *  final answer. The backend runs to completion + persists regardless of the
- *  stream, so a closed tab never loses the answer (recovered via history on reopen). */
+ *  stream, so a closed tab never loses the answer (recovered via history on reopen).
+ *
+ *  Pass an optional `signal` from the caller's AbortController; the function also
+ *  enforces a 90s *idle* timeout (reset on every incoming SSE event — the total
+ *  turn may exceed 90s; only gaps between events cannot). */
 export async function sendChatStream(
   message: string, model: string | undefined, sessionId: string | null,
   onStep: (evt: { phase?: string; step?: number; label?: string; tool?: string; count?: number }) => void,
+  signal?: AbortSignal,
 ): Promise<ChatResponse> {
+  const IDLE_MS = 90_000;
   const url = requireUrl();
-  const res = await fetch(`${url}/chat/stream`, {
-    method: 'POST',
-    headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, model, session_id: sessionId }),
-  });
-  if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`);
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  let final: ChatResponse | null = null;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split('\n\n');
-    buf = parts.pop() ?? '';
-    for (const p of parts) {
-      const line = p.split('\n').find((l) => l.startsWith('data: '));
-      if (!line) continue;
-      const evt = JSON.parse(line.slice(6));
-      if (evt.type === 'step') onStep(evt);
-      else if (evt.type === 'done') final = evt as ChatResponse;
-      else if (evt.type === 'error') throw new Error(evt.detail || 'chat failed');
+
+  // Internal controller handles the idle-timeout abort path.
+  const internalCtrl = new AbortController();
+  const combined = signal
+    ? (AbortSignal as any).any?.([signal, internalCtrl.signal]) ?? internalCtrl.signal
+    : internalCtrl.signal;
+
+  // Forward external cancellation into the internal controller so we can
+  // always cancel via internalCtrl.abort() regardless of which signal fired.
+  let externalAborted = false;
+  signal?.addEventListener('abort', () => { externalAborted = true; internalCtrl.abort(); });
+
+  let idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS);
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS); };
+
+  try {
+    const res = await fetch(`${url}/chat/stream`, {
+      method: 'POST',
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, model, session_id: sessionId }),
+      signal: combined,
+    });
+    if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let final: ChatResponse | null = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() ?? '';
+      for (const p of parts) {
+        const line = p.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const evt = JSON.parse(line.slice(6));
+        if (evt.type === 'step') onStep(evt);
+        else if (evt.type === 'done') final = evt as ChatResponse;
+        else if (evt.type === 'error') throw new Error(evt.detail || 'chat failed');
+      }
     }
+    if (!final) throw new Error('stream ended without an answer');
+    return final;
+  } catch (e: any) {
+    if (e?.name === 'AbortError' || internalCtrl.signal.aborted || externalAborted) {
+      throw new StreamAbortedError();
+    }
+    throw e;
+  } finally {
+    clearTimeout(idleTimer);
   }
-  if (!final) throw new Error('stream ended without an answer');
-  return final;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {

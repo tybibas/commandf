@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Loader2, ChevronDown, Check } from 'lucide-react';
+import { ArrowUp, Loader2, ChevronDown, Check, X } from 'lucide-react';
 import type { ModelOption } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -23,6 +23,8 @@ export interface ComposerProps {
   onModelChange: (id: string) => void;
   /** Left-of-row controls injected by the parent (the "+" menu + a Knowledge chip). */
   leadingControls?: React.ReactNode;
+  /** When provided, a Cancel button is shown while `sending` is true. */
+  onCancel?: () => void;
 }
 
 /**
@@ -34,7 +36,7 @@ export interface ComposerProps {
 export default function Composer({
   value, onChange, onSubmit, placeholder = "Ask the firm's memory…",
   disabled = false, sending = false, autoFocus = false, focusKey,
-  models, model, onModelChange, leadingControls,
+  models, model, onModelChange, leadingControls, onCancel,
 }: ComposerProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const modelWrapRef = useRef<HTMLDivElement>(null);
@@ -147,6 +149,16 @@ export default function Composer({
             </div>
           )}
 
+          {sending && onCancel && (
+            <button
+              type="button"
+              onClick={onCancel}
+              className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors duration-fast ease-out-expo active:scale-95 ${FOCUS}`}
+              aria-label="Cancel response"
+            >
+              <X className="w-4 h-4" strokeWidth={2.25} />
+            </button>
+          )}
           <button
             type="button"
             onClick={onSubmit}
