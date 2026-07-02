@@ -237,12 +237,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   }
 
-  async function signOut() {
-    await supabase.auth.signOut();
-    // Clear the persisted context so the next user starts fresh
-    try { localStorage.removeItem('qf_active_context'); } catch { /* ignore */ }
+  function signOut(): Promise<void> {
+    // INSTANT sign-out: clear local auth state FIRST so the Gate (which routes on
+    // the session) drops to the login screen immediately — never blocking on the
+    // network. supabase.auth.signOut() makes a GoTrue revoke call that can take
+    // several seconds under load; awaiting it before clearing state is exactly
+    // what made sign-out feel slow. We fire it in the background instead.
+    loadedUserIdRef.current = null;
     setUser(null);
     setSession(null);
+    setProfileLoading(false);
+    try { localStorage.removeItem('qf_active_context'); } catch { /* ignore */ }
+
+    // Revoke the token in the background. `scope:'local'` clears the local
+    // session synchronously-ish (no server round-trip to block the UI); the
+    // onAuthStateChange('SIGNED_OUT') fires regardless. Swallow failures — the
+    // local state is already cleared, so the user is signed out from their view.
+    void supabase.auth.signOut({ scope: 'local' }).catch(() => { /* already cleared locally */ });
+    return Promise.resolve();
   }
 
   // Derive straight from the session so it updates the instant the session's

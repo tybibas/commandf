@@ -164,6 +164,11 @@ interface SidebarProps {
   onToggle: () => void;
   onNewChat: () => void;
   sessions: Session[];
+  /** True when the last sessions fetch FAILED (error/timeout). Drives a
+   * "couldn't load — retry" affordance instead of a silent "no conversations". */
+  sessionsError?: boolean;
+  /** Re-fetch the sessions list (retry after a failure). */
+  onRetrySessions?: () => void;
   activeSessionId: string | null;
   onOpenSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
@@ -181,7 +186,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({
-  collapsed, onToggle, onNewChat, sessions, activeSessionId,
+  collapsed, onToggle, onNewChat, sessions, sessionsError, onRetrySessions, activeSessionId,
   onOpenSession, onDeleteSession, onOpenKnowledge, docCount, contextLabel, logoSrc,
   userName, userEmail, planLabel, onSignOut,
 }: SidebarProps) {
@@ -254,7 +259,26 @@ export default function Sidebar({
           aria-label="Recent conversations"
         >
           {sessions.length === 0 ? (
-            !collapsed && <p className="px-2 py-2 text-caption text-text-muted">No conversations yet</p>
+            !collapsed && (
+              sessionsError ? (
+                // Load FAILED with nothing cached — offer a retry. NEVER present a
+                // failure as "no conversations yet" (that reads as "all chats gone").
+                <div className="px-2 py-2 animate-fade-in">
+                  <p className="text-caption text-text-muted">Couldn't load your conversations.</p>
+                  {onRetrySessions && (
+                    <button
+                      type="button"
+                      onClick={onRetrySessions}
+                      className={`mt-1.5 inline-flex items-center h-7 px-2.5 rounded-pill border border-border-light text-caption text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="px-2 py-2 text-caption text-text-muted">No conversations yet</p>
+              )
+            )
           ) : (
             sessions.map((s) => {
               const active = s.id === activeSessionId;
@@ -295,6 +319,18 @@ export default function Sidebar({
             })
           )}
         </nav>
+        {/* Showing a cached list but the last refresh FAILED — say so + offer a
+            retry, so a stale rail is never mistaken for the live truth. */}
+        {!collapsed && sessionsError && sessions.length > 0 && onRetrySessions && (
+          <button
+            type="button"
+            onClick={onRetrySessions}
+            className={`shrink-0 mx-2 mb-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-control text-micro text-text-muted hover:text-text-secondary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+            title="Couldn't refresh — showing your last-known list. Click to retry."
+          >
+            Couldn't refresh — retry
+          </button>
+        )}
       </div>
 
       {/* ── Footer: workspace identity (above hairline) ────────────────── */}

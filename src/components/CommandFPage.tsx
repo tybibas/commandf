@@ -3,12 +3,13 @@ import {
   Plus, Database, Upload, Presentation, Table2, Search, GitCompare, MessageSquare, Wand2, Loader2,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
+import { supabase } from '../lib/supabase';
 import { useClientStrategy } from '../contexts/ClientStrategyContext';
 
 import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChatStream, deleteSession,
-  fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentToken, currentUserId, NotSignedInError,
+  fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentAuth, NotSignedInError,
   uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt,
 } from './commandf/api';
 import { useDictation } from '../hooks/useDictation';
@@ -68,7 +69,13 @@ export function CommandFPage({
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
+  // True when the last sessions-list fetch FAILED (error/timeout) — drives a
+  // "couldn't load — retry" affordance in the sidebar instead of a silent empty.
+  const [sessionsError, setSessionsError] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  // True when opening a conversation failed (error/timeout); shows a retry in the
+  // conversation surface rather than a blank/stale thread.
+  const [historyError, setHistoryError] = useState(false);
   const [models, setModels] = useState<ModelOption[]>([]);
   const [model, setModel] = useState<string>('');
   const [briefing, setBriefing] = useState<Briefing | null>(null);
@@ -165,23 +172,37 @@ export function CommandFPage({
     if (b) setBriefing(b);
   }, []);
 
-  // Refetch the authoritative list and reconcile the local cache. On failure we
-  // keep whatever is on screen (optimistic/cached) rather than blanking it.
+  // Refetch the authoritative list and reconcile the local cache. CRITICAL: only
+  // a SUCCESSFUL response (ok:true) may overwrite the cache — a genuine empty
+  // history clears it, but an error/timeout must NEVER wipe it (that was the
+  // "all my chats disappeared" bug: a timeout returned [] and blanked the rail +
+  // cache). On failure we keep whatever is on screen (cached/optimistic) and, if
+  // there is nothing to show, raise a "couldn't load — retry" banner.
   const loadSessions = useCallback(async () => {
-    const fresh = await fetchSessions().catch(() => null);
-    if (fresh) { setSessions(fresh); writeSessionsCache(userIdRef.current, fresh); }
+    const res = await fetchSessions();
+    if (res.ok) {
+      setSessions(res.data);
+      writeSessionsCache(userIdRef.current, res.data);
+      setSessionsError(false);
+    } else {
+      // Keep the current (cached) list on screen; only flag an error when we have
+      // nothing cached to fall back to, so the sidebar can offer a retry instead
+      // of an empty list that reads as "no conversations".
+      setSessionsError(true);
+    }
   }, []);
 
   const loadSidecar = useCallback(async () => {
     if (notConfigured) { setLoading(false); return; }
-    if (!(await currentToken())) {
+    // ONE local getSession() read for both token + uid (was two back-to-back).
+    const { token, uid } = await currentAuth();
+    if (!token) {
       toast.error('Not signed in — please re-authenticate.');
       setLoading(false);
       return;
     }
     // Seed the sidebar from the per-user cache immediately (zero-flash), then
     // revalidate against the server below (stale-while-revalidate).
-    const uid = await currentUserId();
     userIdRef.current = uid;
     const cached = readSessionsCache(uid);
     if (cached.length) setSessions(cached);
@@ -195,9 +216,13 @@ export function CommandFPage({
       if (lastSid) {
         setSessionId(lastSid);
         setSurface('chat');
+        setHistoryError(false);
         fetchHistory(lastSid)
           .then((h) => setMessages(h))
-          .catch(() => { setSessionId(null); setSurface('home'); writeActiveSession(uid, null); });
+          // On failure keep the thread open with a retry rather than silently
+          // bouncing home (which reads as "the conversation vanished"). Only a
+          // clean load with no messages stays; an error/timeout shows the banner.
+          .catch(() => { setHistoryError(true); });
       }
     }
     try {
@@ -219,6 +244,24 @@ export function CommandFPage({
   }, [notConfigured]);
 
   useEffect(() => { loadSidecar(); }, [loadSidecar]);
+
+  // Re-fetch the sessions list on a genuine SIGN-IN so conversations reappear the
+  // moment auth is (re)established — e.g. after the backend switched to keying
+  // sessions on the stable auth `sub`. We ignore TOKEN_REFRESHED / same-user
+  // re-notifications (they don't change WHOSE sessions we should show and would
+  // just cause redundant fetches); we act only when the signed-in uid CHANGES.
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, sess) => {
+      if (event !== 'SIGNED_IN') return;
+      const uid = sess?.user?.id ?? null;
+      if (!uid || uid === userIdRef.current) return; // same user re-notified → no-op
+      userIdRef.current = uid;
+      const cached = readSessionsCache(uid);
+      if (cached.length) setSessions(cached); // zero-flash from cache first
+      loadSessions();                          // then revalidate against the server
+    });
+    return () => subscription.unsubscribe();
+  }, [loadSessions]);
 
   useEffect(() => () => {
     if (syncPollRef.current !== null) clearInterval(syncPollRef.current);
@@ -265,12 +308,26 @@ export function CommandFPage({
   }, []);
 
   const openSession = async (sid: string) => {
-    setSessionId(sid); setSurface('chat');
-    try { setMessages(await fetchHistory(sid)); }
-    catch (e: any) { toast.error(e?.message || 'Could not load conversation.'); }
+    setSessionId(sid); setSurface('chat'); setHistoryError(false);
+    try {
+      setMessages(await fetchHistory(sid));
+    } catch (e: any) {
+      // Do NOT blank the thread on failure — leave what's there and surface a
+      // retry. A timeout/error must never read as "this conversation is empty".
+      setHistoryError(true);
+      toast.error(e?.message || 'Could not load conversation.');
+    }
   };
 
-  const newChat = () => { setSessionId(null); setMessages([]); setSurface('home'); setFocusKey((k) => k + 1); };
+  // Retry the current conversation load after a transient error/timeout.
+  const retryHistory = useCallback(async () => {
+    if (!sessionId) return;
+    setHistoryError(false);
+    try { setMessages(await fetchHistory(sessionId)); }
+    catch { setHistoryError(true); }
+  }, [sessionId]);
+
+  const newChat = () => { setSessionId(null); setMessages([]); setSurface('home'); setHistoryError(false); setFocusKey((k) => k + 1); };
 
   const sendMessage = async (text: string) => {
     const msg = text.trim();
@@ -495,6 +552,8 @@ export function CommandFPage({
         onToggle={() => setCollapsed((v) => !v)}
         onNewChat={newChat}
         sessions={sessions}
+        sessionsError={sessionsError}
+        onRetrySessions={loadSessions}
         activeSessionId={sessionId}
         onOpenSession={openSession}
         onDeleteSession={onDeleteSession}
@@ -528,6 +587,18 @@ export function CommandFPage({
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (
           <>
+            {historyError && (
+              <div className="mx-6 mt-4 shrink-0 flex items-center justify-between gap-3 rounded-surface border border-border-light bg-bg-secondary px-4 py-2.5 text-caption text-text-secondary animate-fade-in">
+                <span>Couldn't load this conversation — it may be a temporary connection issue.</span>
+                <button
+                  type="button"
+                  onClick={retryHistory}
+                  className={`shrink-0 inline-flex items-center h-7 px-2.5 rounded-pill border border-border-light text-caption text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>

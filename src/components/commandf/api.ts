@@ -147,6 +147,48 @@ export class EndpointPendingError extends Error {
   }
 }
 
+// ── Resilience primitives ─────────────────────────────────────────────────────
+
+/** Thrown when a fetch is aborted by our own timeout guard (distinct from a
+ * server error). Callers treat this as "couldn't load — retry", NOT empty data. */
+export class RequestTimeoutError extends Error {
+  constructor(what: string) {
+    super(`${what} timed out.`);
+    this.name = 'RequestTimeoutError';
+  }
+}
+
+// Default network budgets. These bound EVERY query so a slow/degraded backend
+// (e.g. Postgres statement-timeout 57014 under bulk-ingest load) can never
+// produce an infinite spinner. They degrade to a typed error, not empty data.
+const T_FAST = 6000;    // lists / lightweight reads (sessions, models, status)
+const T_HISTORY = 8000; // a single conversation's messages
+const T_BRIEFING = 10000; // knowledge briefing (count RPC can be slow)
+
+/** fetch() with an AbortController-backed timeout. Rejects with
+ * RequestTimeoutError when the budget elapses so the caller can distinguish a
+ * timeout from an HTTP/error response and from an empty-but-successful result. */
+async function fetchWithTimeout(
+  input: string, init: RequestInit, ms: number, label: string,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    return await fetch(input, { ...init, signal: ctrl.signal });
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new RequestTimeoutError(label);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Discriminated result for the persistence-critical reads. `ok:true` carries
+ * data (which may legitimately be an empty list — a real "no conversations yet");
+ * `ok:false` carries the error so the UI shows "couldn't load — retry" and NEVER
+ * mistakes a failure for an empty list. */
+export type LoadResult<T> = { ok: true; data: T } | { ok: false; error: Error };
+
 // ── Internals ────────────────────────────────────────────────────────────────
 
 async function authHeaders(): Promise<Record<string, string>> {
@@ -176,6 +218,17 @@ export async function currentUserId(): Promise<string | null> {
   return data.session?.user?.id ?? null;
 }
 
+/** Token + stable uid in ONE getSession() read (local, no network). Avoids the
+ * two back-to-back getSession() calls the sidecar loader used to make. Never
+ * throws; both fields are null when not signed in. */
+export async function currentAuth(): Promise<{ token: string | null; uid: string | null }> {
+  const { data } = await supabase.auth.getSession();
+  return {
+    token: data.session?.access_token ?? null,
+    uid: data.session?.user?.id ?? null,
+  };
+}
+
 function requireUrl(): string {
   if (!COMMANDF_URL) throw new NotConfiguredError();
   return COMMANDF_URL;
@@ -194,31 +247,63 @@ async function json<T>(res: Response): Promise<T> {
 
 export async function fetchModels(): Promise<ModelOption[]> {
   const url = requireUrl();
-  const r = await fetch(`${url}/models`).then((x) => x.json()).catch(() => ({ models: [] }));
-  return r.models || [];
+  try {
+    const res = await fetchWithTimeout(`${url}/models`, {}, T_FAST, 'Loading models');
+    const r = await res.json();
+    return r.models || [];
+  } catch {
+    return []; // non-critical: the composer falls back to the default model
+  }
 }
 
-export async function fetchSessions(): Promise<Session[]> {
-  const url = requireUrl();
-  const r = await fetch(`${url}/sessions`, { headers: await authHeaders() })
-    .then((x) => x.json()).catch(() => ({ sessions: [] }));
-  return r.sessions || [];
+/** Persistence-critical: the recent-conversations list. Returns a discriminated
+ * result so the caller can distinguish a genuine empty history (ok:true, []) from
+ * a load FAILURE (ok:false) — the failure must surface "couldn't load — retry",
+ * never a silent empty that reads as "all chats gone". Bounded by a timeout. */
+export async function fetchSessions(): Promise<LoadResult<Session[]>> {
+  try {
+    const url = requireUrl();
+    const res = await fetchWithTimeout(
+      `${url}/sessions`, { headers: await authHeaders() }, T_FAST, 'Loading conversations',
+    );
+    if (!res.ok) {
+      if (res.status === 401) return { ok: false, error: new NotSignedInError() };
+      return { ok: false, error: new Error(`HTTP ${res.status}`) };
+    }
+    const r = await res.json();
+    return { ok: true, data: r.sessions || [] };
+  } catch (e: any) {
+    return { ok: false, error: e instanceof Error ? e : new Error(String(e)) };
+  }
 }
 
 export async function fetchBriefing(clientContext: string): Promise<Briefing | null> {
   const url = requireUrl();
   const qs = clientContext ? `?client_context=${encodeURIComponent(clientContext)}` : '';
   try {
-    return await fetch(`${url}/briefing${qs}`, { headers: await authHeaders() }).then((r) => r.json());
+    const res = await fetchWithTimeout(
+      `${url}/briefing${qs}`, { headers: await authHeaders() }, T_BRIEFING, 'Loading briefing',
+    );
+    return await res.json();
   } catch {
     return null; // non-fatal — the page works without the briefing
   }
 }
 
+/** A conversation's messages. Bounded by a timeout: a slow/degraded backend
+ * rejects with RequestTimeoutError (not an infinite spinner). Callers surface
+ * "couldn't load this conversation — retry" rather than silently blanking it. */
 export async function fetchHistory(sessionId: string): Promise<Message[]> {
   const url = requireUrl();
-  const r = await fetch(`${url}/history?session_id=${encodeURIComponent(sessionId)}`, { headers: await authHeaders() })
-    .then((x) => x.json());
+  const res = await fetchWithTimeout(
+    `${url}/history?session_id=${encodeURIComponent(sessionId)}`,
+    { headers: await authHeaders() }, T_HISTORY, 'Loading conversation',
+  );
+  if (!res.ok) {
+    if (res.status === 401) throw new NotSignedInError();
+    throw new Error(`HTTP ${res.status}`);
+  }
+  const r = await res.json();
   return (r.history || []).map((h: any) => ({
     role: h.role, content: h.content, sources: h.sources || [],
   }));
@@ -291,7 +376,10 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function fetchSourcesStatus(): Promise<SourcesStatus | null> {
   const url = requireUrl();
   try {
-    return await fetch(`${url}/sources/status`, { headers: await authHeaders() }).then((r) => r.json());
+    const res = await fetchWithTimeout(
+      `${url}/sources/status`, { headers: await authHeaders() }, T_FAST, 'Loading sources',
+    );
+    return await res.json();
   } catch {
     return null;
   }
