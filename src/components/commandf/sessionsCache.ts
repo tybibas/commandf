@@ -3,7 +3,7 @@
 // the stale-while-revalidate pattern ChatGPT/Claude use. Keyed by the user's
 // JWT sub, so a different operator on the same browser never sees another's list.
 
-import type { Session } from './api';
+import type { Briefing, Session } from './api';
 
 const key = (uid: string) => `cf-sessions-${uid}`;
 const MAX = 50; // bound the cache the same way the server bounds the list
@@ -25,6 +25,33 @@ export function writeSessionsCache(uid: string | null, sessions: Session[]): voi
     localStorage.setItem(key(uid), JSON.stringify(sessions.slice(0, MAX)));
   } catch {
     /* quota / disabled storage — non-fatal, the network list still loads */
+  }
+}
+
+// ── Per-user briefing / knowledge-base counts ────────────────────────────────
+// Unlike sessions, the briefing had NO local cache, so the KB doc count was a
+// live fetch on every tab open — a fresh browser profile during a slow backend
+// window (Modal cold start, DB index build) rendered "0 documents indexed"
+// while an older tab showed the truth from React state (2026-07-02 incident).
+// Same stale-while-revalidate pattern: seed instantly, overwrite on live fetch.
+const briefingKey = (uid: string) => `cf-kb-${uid}`;
+
+export function readBriefingCache(uid: string | null): Briefing | null {
+  if (!uid) return null;
+  try {
+    const raw = localStorage.getItem(briefingKey(uid));
+    return raw ? (JSON.parse(raw) as Briefing) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeBriefingCache(uid: string | null, briefing: Briefing): void {
+  if (!uid) return;
+  try {
+    localStorage.setItem(briefingKey(uid), JSON.stringify(briefing));
+  } catch {
+    /* quota / disabled storage — non-fatal */
   }
 }
 

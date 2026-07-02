@@ -16,6 +16,7 @@ import { useDictation } from '../hooks/useDictation';
 import MicButton from './commandf/MicButton';
 import {
   readSessionsCache, writeSessionsCache,
+  readBriefingCache, writeBriefingCache,
   readDraft, writeDraft, readActiveSession, writeActiveSession,
 } from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
@@ -161,15 +162,22 @@ export function CommandFPage({
 
   const loadBriefing = useCallback(async (cc: string) => {
     // The briefing includes the corpus count, whose RPC can time out under heavy
-    // DB write load. fetchBriefing swallows that to null; retry once after a short
-    // backoff so a transient timeout self-heals (the KB count fills in) without
-    // the user having to reload. Never throws.
-    let b = await fetchBriefing(cc);
-    if (!b) {
-      await new Promise((r) => setTimeout(r, 4000));
-      b = await fetchBriefing(cc);
+    // DB write load (e.g. an index build). fetchBriefing swallows that to null;
+    // retry with backoff so a transient bad window self-heals (the KB count
+    // fills in) without the user having to reload. Never throws.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 5000));
+      const b = await fetchBriefing(cc);
+      if (b) {
+        setBriefing(b);
+        // Cache only the default view (cc === '') — a client-filtered briefing
+        // must never overwrite the all-clients default that a fresh tab reads.
+        if (cc === '') writeBriefingCache(userIdRef.current, b);
+        return;
+      }
     }
-    if (b) setBriefing(b);
+    // All attempts failed — leave briefing as-is; the KB panel already shows
+    // its honest "Syncing…" state instead of a fake 0.
   }, []);
 
   // Refetch the authoritative list and reconcile the local cache. CRITICAL: only
@@ -206,6 +214,11 @@ export function CommandFPage({
     userIdRef.current = uid;
     const cached = readSessionsCache(uid);
     if (cached.length) setSessions(cached);
+    // Seed the briefing (KB doc count etc.) from the local cache so the
+    // Knowledge panel shows real numbers instantly on a fresh tab / new profile,
+    // before the live fetchBriefing response arrives (stale-while-revalidate).
+    const cachedBriefing = readBriefingCache(uid);
+    if (cachedBriefing) setBriefing(cachedBriefing);
     // Restore the unsent composer draft and the last open thread (survives tab
     // close / reload). Guarded so it runs once and never clobbers live typing.
     if (!didRestoreRef.current) {

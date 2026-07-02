@@ -161,9 +161,14 @@ export class RequestTimeoutError extends Error {
 // Default network budgets. These bound EVERY query so a slow/degraded backend
 // (e.g. Postgres statement-timeout 57014 under bulk-ingest load) can never
 // produce an infinite spinner. They degrade to a typed error, not empty data.
-const T_FAST = 6000;    // lists / lightweight reads (sessions, models, status)
-const T_HISTORY = 8000; // a single conversation's messages
-const T_BRIEFING = 10000; // knowledge briefing (count RPC can be slow)
+// Budgets must survive the WORST cold path, not just a warm backend: a sleeping
+// Modal container adds up to ~30s to the first request, and /sessions makes two
+// sequential DB round-trips. At 6s, every fresh-profile sign-in during DB load
+// (e.g. an index build) looked like "all my chats/docs are gone" (2026-07-02
+// cross-profile incident).
+const T_FAST = 15000;    // lists / lightweight reads (sessions, models, status)
+const T_HISTORY = 15000; // a single conversation's messages
+const T_BRIEFING = 12000; // knowledge briefing (count RPC can be slow)
 
 /** fetch() with an AbortController-backed timeout. Rejects with
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
