@@ -343,17 +343,24 @@ export class StreamAbortedError extends Error {
   constructor() { super('Stream cancelled.'); this.name = 'StreamAbortedError'; }
 }
 
-/** Streaming chat: invokes `onStep` per live progress event and resolves with the
- *  final answer. The backend runs to completion + persists regardless of the
- *  stream, so a closed tab never loses the answer (recovered via history on reopen).
+/** Streaming chat: invokes `onStep` per live progress event, `onDelta` per
+ *  streamed text chunk, and resolves with the final answer.
  *
- *  Pass an optional `signal` from the caller's AbortController; the function also
- *  enforces a 90s *idle* timeout (reset on every incoming SSE event — the total
- *  turn may exceed 90s; only gaps between events cannot). */
+ *  Delta events carry raw (marker-stripped) text as the model generates the
+ *  synthesis turn. The caller should display these in a draft bubble, then
+ *  replace the bubble content with the final `response` from the resolved
+ *  ChatResponse (which is the post-processed, citation-normalized version).
+ *
+ *  The backend runs to completion + persists regardless of the stream, so a
+ *  closed tab never loses the answer (recovered via history on reopen).
+ *
+ *  Pass an optional `signal` from the caller's AbortController; the function
+ *  also enforces a 90s idle timeout (reset on every incoming SSE event). */
 export async function sendChatStream(
   message: string, model: string | undefined, sessionId: string | null,
   onStep: (evt: { phase?: string; step?: number; label?: string; tool?: string; count?: number }) => void,
   signal?: AbortSignal,
+  onDelta?: (text: string) => void,
 ): Promise<ChatResponse> {
   const IDLE_MS = 90_000;
   const url = requireUrl();
@@ -396,6 +403,7 @@ export async function sendChatStream(
         if (!line) continue;
         const evt = JSON.parse(line.slice(6));
         if (evt.type === 'step') onStep(evt);
+        else if (evt.type === 'delta') { resetIdle(); onDelta?.(evt.text ?? ''); }
         else if (evt.type === 'done') final = evt as ChatResponse;
         else if (evt.type === 'error') throw new Error(evt.detail || 'chat failed');
       }

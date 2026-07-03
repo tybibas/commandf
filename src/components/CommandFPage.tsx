@@ -96,6 +96,10 @@ export function CommandFPage({
   const [deckSeed, setDeckSeed] = useState('');
   const [pinnedFileIds, setPinnedFileIds] = useState<string[]>([]);  // source-pinning for deck build
   const [steps, setSteps] = useState<ThinkingStep[]>([]);  // live agent progress
+  // Accumulated text from delta SSE events — shown as a draft assistant bubble
+  // while the synthesis turn streams. Cleared (replaced) on the done event so
+  // the final citation-normalized text takes over. Empty string = no draft bubble.
+  const [streamDraft, setStreamDraft] = useState('');
   const [surface, setSurface] = useState<Surface>('home');
   const [focusKey, setFocusKey] = useState(0);
   // AbortController for the in-flight sendChatStream call; null when idle.
@@ -379,16 +383,27 @@ export function CommandFPage({
     setMessages((prev) => [...prev, mkMsg({ role: 'user', content: msg })]);
     setSending(true);
     setSteps([]);
+    setStreamDraft('');
     const ctrl = new AbortController();
     streamCtrlRef.current = ctrl;
     try {
-      // Streaming: live step-progress feeds the thinking indicator. Resolves with
-      // the final answer even if a proxy buffers the events (steps just arrive at
-      // the end). No auto-retry on error — that would double-charge the query.
-      const data = await sendChatStream(msg, model, sessionId, (evt) =>
-        setSteps((prev) => [...prev, {
-          phase: evt.phase, step: evt.step, label: evt.label, tool: evt.tool, count: evt.count,
-        } as ThinkingStep]), ctrl.signal);
+      // Streaming: live step-progress feeds the thinking indicator; delta events
+      // stream the synthesis turn's text into a draft bubble. Resolves with the
+      // final answer (citation-normalized); the draft is replaced by the final.
+      // No auto-retry on error — that would double-charge the query.
+      const data = await sendChatStream(
+        msg, model, sessionId,
+        (evt) => {
+          // A new tool round started: any streamed text so far was that turn's
+          // preamble, not the answer — clear the draft so it never lingers.
+          setStreamDraft('');
+          setSteps((prev) => [...prev, {
+            phase: evt.phase, step: evt.step, label: evt.label, tool: evt.tool, count: evt.count,
+          } as ThinkingStep]);
+        },
+        ctrl.signal,
+        (text) => setStreamDraft((prev) => prev + text),
+      );
       if (data.session_id && !sessionId) {
         // New thread — optimistically insert it at the top of the rail so it
         // appears instantly (title = first message), then reconcile with server.
@@ -413,6 +428,7 @@ export function CommandFPage({
       streamCtrlRef.current = null;
       setSending(false);
       setSteps([]);
+      setStreamDraft('');
     }
   };
 
@@ -650,7 +666,7 @@ export function CommandFPage({
                 </button>
               </div>
             )}
-            <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
+            <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} streamDraft={streamDraft || undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>
             </div>
