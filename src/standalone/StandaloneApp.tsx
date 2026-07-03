@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
-import { ClientStrategyProvider } from '../contexts/ClientStrategyContext';
+import { ActionistStrategyProvider } from '../contexts/ActionistStrategyContext';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { CommandFPage } from '../components/CommandFPage';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
@@ -87,9 +87,9 @@ export default function StandaloneApp() {
   }
   return (
     <AuthProvider>
-      <ClientStrategyProvider>
+      <ActionistStrategyProvider>
         <Gate />
-      </ClientStrategyProvider>
+      </ActionistStrategyProvider>
     </AuthProvider>
   );
 }

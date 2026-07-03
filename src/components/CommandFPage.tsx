@@ -4,7 +4,7 @@ import {
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
-import { useClientStrategy } from '../contexts/ClientStrategyContext';
+import { useClientStrategy } from '../contexts/ActionistStrategyContext';
 
 import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,

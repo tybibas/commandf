@@ -1,6 +1,6 @@
 // Dev-only harness root. Wraps the real surfaces in the providers they need.
 import { AuthProvider } from '../contexts/AuthContext';
-import { ClientStrategyProvider } from '../contexts/ClientStrategyContext';
+import { ActionistStrategyProvider } from '../contexts/ActionistStrategyContext';
 import { CommandFPage } from '../components/CommandFPage';
 import { CommandFLogin } from '../standalone/CommandFLogin';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
@@ -20,7 +20,7 @@ export function HarnessRoot({ view }: { view: string }) {
   // Playwright interactions against the real fetch-stubbed api layer.
   return (
     <AuthProvider>
-      <ClientStrategyProvider>
+      <ActionistStrategyProvider>
         <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
           <CommandFPage
             userName={MOCK_USER_NAME}
@@ -28,7 +28,7 @@ export function HarnessRoot({ view }: { view: string }) {
             onSignOut={() => console.info('[harness] sign-out triggered')}
           />
         </div>
-      </ClientStrategyProvider>
+      </ActionistStrategyProvider>
     </AuthProvider>
   );
 }

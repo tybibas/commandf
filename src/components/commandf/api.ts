@@ -171,6 +171,8 @@ export class RequestTimeoutError extends Error {
 const T_FAST = 15000;    // lists / lightweight reads (sessions, models, status)
 const T_HISTORY = 15000; // a single conversation's messages
 const T_BRIEFING = 12000; // knowledge briefing (count RPC can be slow)
+const T_MUTATE = 20000;  // write operations: sync, delete, upload, optimize-prompt
+const T_GEN = 30000;     // generation submits and status polls (deck, survey, upload)
 
 /** fetch() with an AbortController-backed timeout. Rejects with
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
@@ -320,9 +322,11 @@ export async function fetchHistory(sessionId: string): Promise<Message[]> {
  * before sending. Cheap single-shot call on the backend (no RAG, no side effects). */
 export async function optimizePrompt(text: string): Promise<{ optimized: string }> {
   const url = requireUrl();
-  const res = await fetch(`${url}/optimize-prompt`, {
-    method: 'POST', headers: await authHeaders(), body: JSON.stringify({ text }),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/optimize-prompt`,
+    { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ text }) },
+    T_MUTATE, 'Optimizing prompt',
+  );
   return json<{ optimized: string }>(res);
 }
 
@@ -330,11 +334,11 @@ export async function sendChat(
   message: string, model: string, sessionId: string | null,
 ): Promise<ChatResponse> {
   const url = requireUrl();
-  const res = await fetch(`${url}/chat`, {
-    method: 'POST',
-    headers: await authHeaders(),
-    body: JSON.stringify({ message, model, session_id: sessionId }),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/chat`,
+    { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ message, model, session_id: sessionId }) },
+    T_MUTATE, 'Sending message',
+  );
   return json<ChatResponse>(res);
 }
 
@@ -422,7 +426,11 @@ export async function sendChatStream(
 
 export async function deleteSession(sessionId: string): Promise<void> {
   const url = requireUrl();
-  await fetch(`${url}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: await authHeaders() });
+  await fetchWithTimeout(
+    `${url}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE', headers: await authHeaders() },
+    T_MUTATE, 'Deleting session',
+  );
 }
 
 export async function fetchSourcesStatus(): Promise<SourcesStatus | null> {
@@ -439,14 +447,24 @@ export async function fetchSourcesStatus(): Promise<SourcesStatus | null> {
 
 export async function startSync(): Promise<void> {
   const url = requireUrl();
-  const res = await fetch(`${url}/sync`, { method: 'POST', headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/sync`,
+    { method: 'POST', headers: await authHeaders() },
+    T_MUTATE, 'Starting sync',
+  );
   if (!res.ok) throw new Error(await res.text().catch(() => 'Re-index failed.'));
 }
 
 export async function fetchSyncStatus(): Promise<SyncStatus | null> {
   const url = requireUrl();
-  return fetch(`${url}/sync/status`, { headers: await authHeaders() })
-    .then((r) => r.json()).catch(() => null);
+  try {
+    const res = await fetchWithTimeout(
+      `${url}/sync/status`, { headers: await authHeaders() }, T_FAST, 'Loading sync status',
+    );
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 /** Drive OAuth is a full-page redirect (token passed as a query param). */
@@ -465,7 +483,7 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
   const token = await bearer();
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
   if (!isMultipart) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`${url}${path}`, { method: 'POST', headers, body });
+  const res = await fetchWithTimeout(`${url}${path}`, { method: 'POST', headers, body }, T_GEN, path);
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError(path);
   return json<{ job_id: string }>(res);
 }
@@ -483,11 +501,11 @@ export async function generateDeckOutline(input: {
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
-  const res = await fetch(`${url}/generate-deck/outline`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(input),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/outline`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(input) },
+    T_GEN, 'Generating outline',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/outline');
   return json<DeckOutline>(res);
 }
@@ -524,18 +542,22 @@ export async function editDeckSlide(input: {
 }): Promise<JobStatus> {
   const url = requireUrl();
   const token = await bearer();
-  const res = await fetch(`${url}/generate-deck/edit-slide`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(input),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/edit-slide`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(input) },
+    T_GEN, 'Editing slide',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/edit-slide');
   return json<JobStatus>(res);
 }
 
 export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   const url = requireUrl();
-  const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/${encodeURIComponent(jobId)}/status`,
+    { headers: await authHeaders() },
+    T_GEN, 'Checking deck status',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
   return json<JobStatus>(res);
 }
@@ -558,7 +580,11 @@ export async function generateSurveyCompendium(file: File, title?: string): Prom
 
 export async function surveyCompendiumStatus(jobId: string): Promise<JobStatus> {
   const url = requireUrl();
-  const res = await fetch(`${url}/survey-compendium/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/survey-compendium/${encodeURIComponent(jobId)}/status`,
+    { headers: await authHeaders() },
+    T_GEN, 'Checking survey status',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/survey-compendium');
   return json<JobStatus>(res);
 }
@@ -571,16 +597,22 @@ export async function uploadDocument(file: File, metadata?: Record<string, unkno
   const form = new FormData();
   form.append('file', file);
   if (metadata) form.append('metadata', JSON.stringify(metadata));
-  const res = await fetch(`${url}/upload`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
-  });
+  const res = await fetchWithTimeout(
+    `${url}/upload`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
+    T_GEN, 'Uploading document',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ file_id: string; file_name: string; status: string }>(res);
 }
 
 export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }> {
   const url = requireUrl();
-  const res = await fetch(`${url}/upload/${encodeURIComponent(fileId)}/status`, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/upload/${encodeURIComponent(fileId)}/status`,
+    { headers: await authHeaders() },
+    T_GEN, 'Checking upload status',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }>(res);
 }
