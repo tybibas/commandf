@@ -33,7 +33,7 @@ function withCitations(node: ReactNode, cite: CiteProps): ReactNode {
               type="button"
               onClick={() => onCiteClick(n)}
               aria-label={`Jump to source ${n}`}
-              className="align-super mx-px inline-flex items-baseline font-num text-micro font-medium leading-none text-brand-ink rounded-sm px-0.5 hover:bg-brand-soft focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand transition-colors"
+              className="align-super mx-px inline-flex items-baseline font-mono text-micro font-medium leading-none text-source bg-source-soft rounded-control px-1 hover:bg-source-soft/80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus-ring transition-colors"
               style={{ transitionDuration: 'var(--motion-duration-fast)' }}
             >
               {n}
@@ -68,21 +68,18 @@ function makeComponents(cite: CiteProps): Components {
 const components: Components = {
   h1: ({ children }) => (
     <h1
-      className="font-serif text-2xl font-normal tracking-tight text-text-primary mt-6 mb-2.5 first:mt-0 leading-tight"
+      className="font-display text-2xl font-normal tracking-tight text-text-primary mt-6 mb-2.5 first:mt-0 leading-tight"
     >
       {children}
     </h1>
   ),
   h2: ({ children }) => (
-    <h2
-      style={{ fontFamily: "var(--font-display)" }}
-      className="text-base font-semibold tracking-tight text-text-primary mt-5 mb-1.5 first:mt-0 leading-snug"
-    >
+    <h2 className="font-display text-body-sm font-semibold tracking-tight text-text-primary mt-5 mb-1.5 first:mt-0 leading-snug">
       {children}
     </h2>
   ),
   h3: ({ children }) => (
-    <h3 className="eyebrow text-text-muted mt-5 mb-1.5 first:mt-0">{children}</h3>
+    <h3 className="text-caption font-medium text-text-muted mt-5 mb-1.5 first:mt-0 tracking-wide">{children}</h3>
   ),
   p: ({ children }) => (
     <p className="text-body leading-relaxed text-text-primary mb-3.5 last:mb-0">
@@ -101,7 +98,7 @@ const components: Components = {
     </ul>
   ),
   ol: ({ children }) => (
-    <ol className="list-decimal pl-5 mb-3.5 space-y-1.5 text-body text-text-primary marker:text-text-muted marker:font-num">
+    <ol className="list-decimal pl-5 mb-3.5 space-y-1.5 text-body text-text-primary marker:text-text-muted marker:font-mono">
       {children}
     </ol>
   ),
@@ -113,7 +110,7 @@ const components: Components = {
       href={href}
       target="_blank"
       rel="noreferrer"
-      className="text-brand-ink hover:text-brand underline underline-offset-2 decoration-brand/40 hover:decoration-brand transition-colors"
+      className="text-source underline underline-offset-2 decoration-source/30 hover:decoration-source transition-colors"
       style={{ transitionDuration: 'var(--motion-duration-fast)' }}
     >
       {children}
@@ -155,7 +152,7 @@ const components: Components = {
   ),
   blockquote: ({ children }) => (
     <blockquote
-      className="pl-4 my-4 font-serif text-base italic text-text-secondary leading-relaxed"
+      className="pl-4 my-4 font-body text-body italic text-text-secondary leading-relaxed"
       style={{ borderLeft: '2px solid var(--color-border)' }}
     >
       {children}

@@ -46,7 +46,7 @@ export default function Landing({
           ) : contextLabel && (
             <div className="flex justify-center mb-5 animate-fade-in">
               <span className="inline-flex items-center gap-1.5 rounded-pill bg-bg-secondary border border-border-light px-2.5 py-1 text-caption text-text-secondary">
-                <Sparkles className="w-3 h-3 text-brand/80" strokeWidth={1.75} aria-hidden />
+                <Sparkles className="w-3 h-3 text-accent" strokeWidth={1.75} aria-hidden />
                 {contextLabel}
               </span>
             </div>
@@ -54,7 +54,7 @@ export default function Landing({
 
           {/* Serif greeting — Claude "Evening, Ty" */}
           <div className="text-center mb-7 animate-fade-in" style={{ animationDelay: '40ms' }}>
-            <h1 className="font-serif text-[32px] sm:text-[40px] font-normal tracking-[-0.02em] text-text-primary leading-tight">
+            <h1 className="font-display font-light text-2xl tracking-[-0.02em] text-text-primary leading-tight">
               {greeting}
             </h1>
           </div>
@@ -74,7 +74,7 @@ export default function Landing({
                   onClick={onClick}
                   className={`group inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-primary px-3 py-1.5 text-caption text-text-secondary hover:text-text-primary hover:border-border-hover hover:bg-bg-secondary transition-colors ${MOTION} ${FOCUS}`}
                 >
-                  <Icon className="w-3.5 h-3.5 text-brand-ink transition-colors" strokeWidth={1.75} />
+                  <Icon className="w-3.5 h-3.5 text-accent-ink transition-colors" strokeWidth={1.75} />
                   {label}
                 </button>
               ))}
@@ -83,8 +83,8 @@ export default function Landing({
 
           {/* Knowledge footnote — tiny, unobtrusive */}
           {!loading && (
-            <p className="mt-10 text-center text-caption text-text-muted/80 animate-fade-in" style={{ animationDelay: '140ms' }}>
-              {docCount.toLocaleString()} document{docCount === 1 ? '' : 's'} indexed
+            <p className="mt-10 text-center text-caption text-text-muted animate-fade-in" style={{ animationDelay: '140ms' }}>
+              <span className="font-mono tabular-nums">{docCount.toLocaleString()}</span> document{docCount === 1 ? '' : 's'} indexed
               {lastSync && <> · synced {lastSync}</>}
             </p>
           )}

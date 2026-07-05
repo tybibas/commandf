@@ -418,10 +418,14 @@ export function CommandFPage({
       setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: data.response, sources: data.sources || [] })]);
     } catch (e: any) {
       if (e instanceof StreamAbortedError) {
+        // Cancelled by user — brief toast only, no inline bubble.
         toast.error('Response cancelled.');
+      } else if (e instanceof NotSignedInError) {
+        // Auth error — toast only (no inline bubble, since the session is broken).
+        toast.error(e.message);
       } else {
-        const m = e instanceof NotSignedInError ? e.message : (e?.message || 'Something went wrong.');
-        toast.error(m);
+        // Stream failure — inline error bubble is the persistent surface; no toast.
+        const m = e?.message || 'Something went wrong.';
         setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: m, error: true })]);
       }
     } finally {
@@ -502,7 +506,7 @@ export function CommandFPage({
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-md text-center">
-          <span className="font-serif text-[24px] tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
+          <span className="font-display text-xl font-light tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
           <h2 className="text-lg font-medium text-text-primary mb-1">Not configured</h2>
           <p className="text-body text-text-secondary">
             Set <code className="font-mono text-caption">VITE_MODAL_COMMANDF_URL</code> in the dashboard environment to enable it.
@@ -588,7 +592,7 @@ export function CommandFPage({
       >
         {optimizing
           ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" aria-hidden />
-          : <Wand2 className="w-3.5 h-3.5 text-brand-ink" strokeWidth={1.75} aria-hidden />}
+          : <Wand2 className="w-3.5 h-3.5 text-accent-ink" strokeWidth={1.75} aria-hidden />}
         {optimizing ? 'Optimizing…' : 'Optimize'}
       </button>
     </div>
@@ -642,8 +646,8 @@ export function CommandFPage({
         onDrop={(e) => { if (dragDepth > 0) { e.preventDefault(); setDragDepth(0); const f = e.dataTransfer.files?.[0]; if (f) dropUpload(f); } }}
       >
         {dragDepth > 0 && (surface === 'home' || surface === 'chat') && (
-          <div className="absolute inset-3 z-30 rounded-2xl border-2 border-dashed border-brand/60 bg-bg-primary/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-fade-in">
-            <Upload className="w-8 h-8 text-brand-ink mb-2" strokeWidth={1.5} aria-hidden />
+          <div className="absolute inset-3 z-30 rounded-card border-2 border-dashed border-accent/60 bg-bg-primary/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-fade-in">
+            <Upload className="w-8 h-8 text-accent-ink mb-2" strokeWidth={1.5} aria-hidden />
             <p className="text-body font-medium text-text-primary">Drop to add to your knowledge base</p>
             <p className="text-caption text-text-muted mt-1">PDF, DOCX, or PPTX — indexed and searchable in chat</p>
           </div>

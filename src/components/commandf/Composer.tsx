@@ -86,7 +86,7 @@ export default function Composer({
   const activeModel = models.find((m) => m.id === model);
 
   return (
-    <div className="relative rounded-2xl bg-bg-secondary px-3 pt-3 pb-2.5 border border-border transition-all duration-base ease-out-expo focus-within:bg-bg-elevated focus-within:border-text-primary/40 focus-within:shadow-float">
+    <div className="relative rounded-card bg-bg-secondary px-3 pt-3 pb-2.5 border border-border transition-all duration-base ease-out-expo focus-within:bg-bg-elevated focus-within:border-text-primary/40 focus-within:shadow-float">
       <textarea
         ref={taRef}
         value={value}
@@ -165,7 +165,7 @@ export default function Composer({
             disabled={disabled || !value.trim() || sending}
             className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full transition-colors duration-fast ease-out-expo active:scale-95 disabled:active:scale-100 ${
               !disabled && !sending && value.trim()
-                ? 'bg-brand text-white hover:bg-brand-hover'   // Actionist orange — lit when ready to send
+                ? 'bg-accent text-white hover:bg-accent/85'     // Actionist orange — lit when ready to send
                 : 'bg-bg-tertiary text-text-muted'             // quiet at rest
             } ${FOCUS}`}
             aria-label="Send"
