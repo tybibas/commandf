@@ -13,8 +13,9 @@ export default {
         'text-secondary': 'var(--color-text-secondary)',
         'text-muted':     'var(--color-text-muted)',
 
-        'structure':     'var(--color-structure)',
-        'structure-ink': 'var(--color-structure-ink)',
+        'structure':       'var(--color-structure)',
+        'structure-ink':   'var(--color-structure-ink)',
+        'structure-hover': 'var(--color-structure-hover)',
         'accent':        'var(--color-accent)',
         'accent-ink':    'var(--color-accent-ink)',
         'accent-soft':   'var(--color-accent-soft)',

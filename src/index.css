@@ -63,8 +63,9 @@
   --color-text-muted:     var(--ink-500);
 
   /* Structure / identity */
-  --color-structure:     var(--plum-700);
-  --color-structure-ink: #FFFFFF;
+  --color-structure:       var(--plum-700);
+  --color-structure-ink:   #FFFFFF;
+  --color-structure-hover: var(--plum-900);
 
   /* Accent */
   --color-accent:      var(--orange-500);
@@ -167,8 +168,9 @@
   --color-text-muted:     var(--dark-ink-500);
 
   /* Structure */
-  --color-structure:     var(--plum-500);
-  --color-structure-ink: #FFFFFF;
+  --color-structure:       var(--plum-500);
+  --color-structure-ink:   #FFFFFF;
+  --color-structure-hover: var(--plum-700);
 
   /* Accent */
   --color-accent:      var(--orange-400);

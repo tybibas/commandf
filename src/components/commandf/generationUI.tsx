@@ -4,7 +4,7 @@ import { authedDownloadUrl, type JobStatus } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
-const INK_BTN = `bg-text-primary text-bg-primary hover:bg-text-primary/90 transition-colors ${MOTION} ${FOCUS}`;
+const PILL_BTN = `bg-structure text-structure-ink hover:bg-structure-hover active:scale-[0.98] transition-colors ${MOTION} ${FOCUS}`;
 const GHOST_BTN = `border border-border-light text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`;
 
 export function SurfaceHeader({
@@ -22,7 +22,7 @@ export function SurfaceHeader({
           <ArrowLeft className="w-4 h-4" />
         </button>
         <Icon className="w-4 h-4 text-text-secondary shrink-0" strokeWidth={1.75} aria-hidden />
-        <h1 className="text-[15px] font-medium tracking-tight text-text-primary leading-tight">{title}</h1>
+        <h1 className="text-body font-medium tracking-tight text-text-primary leading-tight">{title}</h1>
       </div>
       <p className="text-body text-text-muted mt-1 ml-11">{subtitle}</p>
     </div>
@@ -44,14 +44,14 @@ export function PendingNote({ endpoint }: { endpoint: string }) {
           <Loader2 className="w-2.5 h-2.5 text-text-muted" />
         </span>
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] font-medium text-text-primary leading-snug">
+          <p className="text-caption font-medium text-text-primary leading-snug">
             Service momentarily unavailable
           </p>
-          <p className="mt-1 text-[12px] text-text-muted leading-relaxed">
+          <p className="mt-1 text-caption text-text-muted leading-relaxed">
             We couldn't reach the generator just now. Everything you entered is saved here — try again in a moment.
           </p>
           <p className="mt-2" title={`Backend endpoint pending: ${endpoint}`}>
-            <span className="eyebrow text-text-muted/70 font-num">{endpoint}</span>
+            <span className="text-micro text-text-muted font-mono tabular-nums">{endpoint}</span>
           </p>
         </div>
       </div>
@@ -96,14 +96,14 @@ export function RunningPanel({
     <div className="mt-5 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3.5 animate-slide-up">
       <div className="flex items-center gap-2 mb-2.5">
         <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted shrink-0 motion-reduce:animate-none" aria-hidden />
-        <p className="eyebrow text-text-muted" aria-live="polite">
+        <p className="text-caption text-text-muted font-medium" aria-live="polite">
           {live ? 'Working' : `Working · step ${done + 1} of ${pool.length}`}
         </p>
       </div>
 
       {live ? (
         // Live backend line — first-class, calm, honest. No fake step counter.
-        <p className="text-[13px] text-text-primary leading-relaxed" aria-live="polite">
+        <p className="text-caption text-text-primary leading-relaxed" aria-live="polite">
           {live}
         </p>
       ) : (
@@ -127,7 +127,7 @@ export function RunningPanel({
                 </span>
                 <span
                   className={[
-                    'text-[13px] transition-colors',
+                    'text-caption transition-colors',
                     isActive ? 'text-text-primary' : isDone ? 'text-text-secondary' : 'text-text-muted',
                   ].join(' ')}
                 >
@@ -148,7 +148,7 @@ export function ErrorPanel({ message, onRetry }: { message: string; onRetry: () 
       <div className="flex items-start gap-2">
         <AlertCircle className="w-4 h-4 text-error shrink-0 mt-0.5" aria-hidden />
         <div className="flex-1 min-w-0">
-          <p className="text-[13px] text-error leading-relaxed">{message}</p>
+          <p className="text-caption text-error leading-relaxed">{message}</p>
           <button
             onClick={onRetry}
             className={`mt-2 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-control text-caption ${GHOST_BTN}`}
@@ -199,9 +199,9 @@ function SlideThumb({
         src={url}
         alt={`Slide ${index + 1}`}
         loading="lazy"
-        className={`h-[88px] aspect-[16/9] object-cover rounded-control border bg-bg-primary transition-colors ${busy ? 'border-brand opacity-60' : 'border-border-light'}`}
+        className={`h-[88px] aspect-[16/9] object-cover rounded-control border bg-bg-primary transition-colors ${busy ? 'border-structure opacity-60' : 'border-border-light'}`}
       />
-      <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-[10px] font-num text-text-muted leading-none">
+      <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-micro font-mono text-text-muted leading-none tabular-nums">
         {index + 1}
       </span>
       {slideEdit && (
@@ -219,7 +219,7 @@ function SlideThumb({
       {open && slideEdit && (
         <div className="absolute z-10 top-[92px] left-0 w-[240px] rounded-surface border border-border-hover bg-bg-elevated shadow-float p-2.5 animate-slide-up">
           <div className="flex items-center justify-between mb-1.5">
-            <p className="eyebrow text-text-muted">Edit slide {index + 1}</p>
+            <p className="text-caption text-text-muted font-medium">Edit slide {index + 1}</p>
             <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="text-text-muted hover:text-text-primary">
               <X className="w-3.5 h-3.5" />
             </button>
@@ -241,7 +241,7 @@ function SlideThumb({
             type="button"
             onClick={submit}
             disabled={busy || !instruction.trim()}
-            className={`mt-1.5 inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-control text-caption font-medium disabled:opacity-40 ${INK_BTN}`}
+            className={`mt-1.5 inline-flex w-full items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-control text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}
           >
             {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Wand2 className="w-3.5 h-3.5" strokeWidth={1.75} />}
             {busy ? 'Regenerating…' : 'Regenerate slide'}
@@ -277,18 +277,18 @@ export function ResultPanel({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-1.5">
             <Check className="w-3 h-3 text-success shrink-0" strokeWidth={3} aria-hidden />
-            <p className="eyebrow text-text-muted">{kindLabel} ready</p>
+            <p className="text-caption text-text-muted font-medium">{kindLabel} ready</p>
           </div>
-          <h2 className="font-outfit text-[16px] font-semibold text-text-primary leading-snug truncate">
+          <h2 className="font-display text-body font-medium text-text-primary leading-snug truncate">
             {heading}
           </h2>
-          <p className="mt-1 flex items-center gap-1.5 text-[13px] text-text-secondary">
+          <p className="mt-1 flex items-center gap-1.5 text-caption text-text-secondary">
             {(typeof result.slide_count === 'number' || (result.preview_urls && result.preview_urls.length > 0)) && (
               <Layers className="w-3.5 h-3.5 text-text-muted shrink-0" strokeWidth={1.75} aria-hidden />
             )}
-            {result.title && countLabel && <span className="font-num">{countLabel}</span>}
+            {result.title && countLabel && <span className="font-mono tabular-nums">{countLabel}</span>}
             {typeof result.sheet_count === 'number' && (
-              <span className="font-num">
+              <span className="font-mono tabular-nums">
                 {result.title && countLabel ? ' · ' : ''}{result.sheet_count} sheets parsed
               </span>
             )}
@@ -298,7 +298,7 @@ export function ResultPanel({
           {secondaryAction && (
             <button
               onClick={secondaryAction.onClick}
-              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-control text-caption ${INK_BTN}`}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-control text-caption ${GHOST_BTN}`}
             >
               {secondaryAction.label}
             </button>
@@ -334,7 +334,7 @@ export function ResultPanel({
             href={downloadHref ?? undefined}
             download
             aria-disabled={!downloadHref}
-            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-control text-body font-medium ${INK_BTN} ${downloadHref ? '' : 'opacity-60 pointer-events-none'}`}
+            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-pill text-body font-medium ${PILL_BTN} ${downloadHref ? '' : 'opacity-60 pointer-events-none'}`}
           >
             <Download className="w-4 h-4" /> Download .pptx
           </a>
@@ -346,7 +346,7 @@ export function ResultPanel({
         <div className="px-5 pb-5 border-t border-hairline pt-4">
           <div className="flex items-center gap-1.5 mb-2">
             <FileWarning className="w-3.5 h-3.5 text-warning" aria-hidden />
-            <p className="eyebrow text-text-muted">
+            <p className="text-caption text-text-muted font-medium">
               {result.placeholders.length} gap{result.placeholders.length === 1 ? '' : 's'} to fill
             </p>
           </div>

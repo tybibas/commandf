@@ -159,7 +159,7 @@ decision-required pulse on `--color-accent` if still needed).
 ### Button
 | Variant | Shape | Fill / text | States |
 |---|---|---|---|
-| Primary | pill | structure / structure-ink | hover: plum-900; active: scale-[0.98]; focus: focus-ring; disabled: opacity-40 |
+| Primary | pill | structure / structure-ink | hover: structure-hover (plum-900 light / plum-700 dark, one step darker than rest); active: scale-[0.98]; focus: focus-ring; disabled: opacity-40 |
 | Secondary | control 6px | transparent + border / text-primary | hover: bg-tertiary |
 | Send (composer) | full circle | accent / white when ready; bg-tertiary/text-muted at rest | keep existing 3-state transition, recolored |
 | Destructive | control | transparent / error, border on hover | confirm-on-second-click pattern |
