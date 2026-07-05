@@ -26,7 +26,7 @@ const UNGROUPED = '__ungrouped__';
  * adapted calm + Claude-like). Controlled via `open`; the lead owns the ⌘K listener
  * and wiring. Dim scrim + a near-white elevated card in the top third, hairline
  * border and soft float shadow. Filters by label + keywords, groups results under
- * quiet eyebrow headers, and drives fully from the keyboard: arrows wrap the
+ * quiet sentence-case group headers, and drives fully from the keyboard: arrows wrap the
  * highlight, Enter runs, Escape closes. Focus is trapped and restored on close.
  */
 export default function CommandPalette({
@@ -159,7 +159,7 @@ export default function CommandPalette({
               groups.map((g) => (
                 <div key={g.key} className="mb-1 last:mb-0">
                   {g.key !== UNGROUPED && (
-                    <p className="eyebrow px-3 pb-1 pt-2 text-text-muted">{g.key}</p>
+                    <p className="text-caption text-text-muted px-3 pb-1 pt-2">{g.key}</p>
                   )}
                   {g.items.map((cmd) => {
                     flatIndex += 1;
@@ -174,16 +174,19 @@ export default function CommandPalette({
                         aria-selected={selected}
                         onMouseMove={() => setActive(i)}
                         onClick={() => runAt(i)}
-                        className={`flex w-full items-center gap-2.5 rounded-control px-3 py-2 text-left transition-colors duration-fast ease-out-expo ${
-                          selected ? 'bg-brand-soft' : 'hover:bg-bg-secondary'
+                        className={`relative flex w-full items-center gap-2.5 rounded-control px-3 py-2 text-left transition-colors duration-fast ease-out-expo ${
+                          selected ? 'bg-bg-tertiary' : 'hover:bg-bg-secondary'
                         }`}
                       >
+                        {selected && (
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-structure" aria-hidden />
+                        )}
                         {Icon && (
                           <Icon className="h-4 w-4 shrink-0 text-text-muted" strokeWidth={1.75} />
                         )}
                         <span className="flex-1 min-w-0 truncate text-body text-text-primary">{cmd.label}</span>
                         {cmd.hint && (
-                          <span className="shrink-0 font-num text-caption text-text-muted tabular-nums">{cmd.hint}</span>
+                          <span className="shrink-0 font-mono text-micro text-text-muted tabular-nums">{cmd.hint}</span>
                         )}
                         {selected && (
                           <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-text-muted" strokeWidth={1.75} aria-hidden />
