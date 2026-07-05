@@ -57,16 +57,16 @@ export function SetPasswordScreen() {
             <span className="font-serif text-[28px] tracking-[-0.015em] text-text-primary leading-none">Command F</span>
             <div className="mt-5 flex items-center justify-center gap-2 text-text-secondary">
               <ShieldCheck className="h-4 w-4 text-success" strokeWidth={1.75} />
-              <p className="text-sm font-medium text-text-primary">Set your password</p>
+              <p className="text-body-sm font-medium text-text-primary">Set your password</p>
             </div>
-            <p className="mt-2 text-sm text-text-secondary">
+            <p className="mt-2 text-body-sm text-text-secondary">
               You're signed in with a temporary password. Choose a new one to secure your account.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label htmlFor="new-password" className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="new-password" className="block text-body-sm font-medium text-text-secondary mb-1.5">
                 New password
               </label>
               <input
@@ -77,13 +77,13 @@ export function SetPasswordScreen() {
                 required
                 minLength={8}
                 autoComplete="new-password"
-                className="w-full rounded-control border border-border-light bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:border-border-strong transition-colors"
+                className="w-full rounded-control border border-border-light bg-bg-primary px-3 py-2 text-body-sm text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:border-border-strong transition-colors"
                 placeholder="At least 8 characters"
               />
             </div>
 
             <div>
-              <label htmlFor="confirm-password" className="block text-sm font-medium text-text-secondary mb-1.5">
+              <label htmlFor="confirm-password" className="block text-body-sm font-medium text-text-secondary mb-1.5">
                 Confirm password
               </label>
               <input
@@ -94,13 +94,13 @@ export function SetPasswordScreen() {
                 required
                 minLength={8}
                 autoComplete="new-password"
-                className="w-full rounded-control border border-border-light bg-bg-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:border-border-strong transition-colors"
+                className="w-full rounded-control border border-border-light bg-bg-primary px-3 py-2 text-body-sm text-text-primary placeholder:text-text-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:border-border-strong transition-colors"
                 placeholder="Re-enter your new password"
               />
             </div>
 
             {error && (
-              <div className="text-sm text-error bg-error-soft border border-border-light rounded-control p-3">
+              <div className="text-body-sm text-error bg-error-soft border border-border-light rounded-control p-3">
                 {error}
               </div>
             )}
@@ -108,7 +108,7 @@ export function SetPasswordScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-9 px-4 rounded-control text-sm font-medium bg-text-primary text-bg-primary hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
+              className="w-full h-9 px-4 rounded-control text-body-sm font-medium bg-text-primary text-bg-primary hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
@@ -124,7 +124,7 @@ export function SetPasswordScreen() {
               <button
                 type="button"
                 onClick={() => signOut()}
-                className="text-sm text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-sm"
+                className="text-body-sm text-text-secondary hover:text-text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring rounded-sm"
               >
                 Sign out
               </button>

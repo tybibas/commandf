@@ -75,7 +75,7 @@ const components: Components = {
   ),
   h2: ({ children }) => (
     <h2
-      style={{ fontFamily: "'Outfit', sans-serif" }}
+      style={{ fontFamily: "var(--font-display)" }}
       className="text-base font-semibold tracking-tight text-text-primary mt-5 mb-1.5 first:mt-0 leading-snug"
     >
       {children}
@@ -164,7 +164,7 @@ const components: Components = {
   table: ({ children }) => (
     <div className="overflow-x-auto mb-3">
       <table
-        className="w-full text-xs"
+        className="w-full text-caption"
         style={{ borderCollapse: 'collapse' }}
       >
         {children}

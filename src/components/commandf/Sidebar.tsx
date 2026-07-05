@@ -90,7 +90,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
           <div
             ref={menuRef}
             role="menu"
-            className="absolute bottom-0 left-full ml-2 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-dark-sm py-1 animate-fade-in"
+            className="absolute bottom-0 left-full ml-2 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
           >
             <div className="px-3 py-2 border-b border-border-light">
               <p className="text-body font-medium text-text-primary truncate">{displayName}</p>
@@ -140,7 +140,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
         <div
           ref={menuRef}
           role="menu"
-          className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-surface bg-bg-elevated border border-border shadow-dark-sm py-1 animate-fade-in"
+          className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
         >
           <button
             type="button"

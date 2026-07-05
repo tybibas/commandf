@@ -131,7 +131,7 @@ export default function Composer({
                         role="option"
                         aria-selected={selected}
                         onClick={() => { onModelChange(m.id); setModelOpen(false); }}
-                        className={`flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-sm transition-colors duration-fast ease-out-expo ${selected ? 'bg-surface-hover text-text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                        className={`flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-body-sm transition-colors duration-fast ease-out-expo ${selected ? 'bg-surface-hover text-text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
                       >
                         <Check className={`mt-0.5 w-3.5 h-3.5 shrink-0 ${selected ? 'opacity-100' : 'opacity-0'}`} strokeWidth={2.5} />
                         <span className="flex-1 min-w-0">
