@@ -27,7 +27,7 @@ export function CommandFLogin() {
         const raw = (error.message ?? '').trim();
         const unhelpful = !raw || raw === '{}' || /gateway|timeout|504|failed to fetch/i.test(raw);
         setError(unhelpful
-          ? 'Sign-in timed out — the service may be waking up. Wait a moment and try again.'
+          ? 'Sign-in timed out. The service may be waking up. Wait a moment and try again.'
           : raw);
       }
     } catch {

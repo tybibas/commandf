@@ -129,15 +129,15 @@ export function CommandFPage({
         if (!mountedRef.current) return;
         if (s.status === 'complete') {
           const n = typeof s.chunks_indexed === 'number' ? s.chunks_indexed : null;
-          toast.updateToast(id, n != null ? `Added ${f.name} — ${n.toLocaleString()} passage${n === 1 ? '' : 's'} indexed. Ask me about it.` : `Added ${f.name} — indexed. Ask me about it.`, 'success');
+          toast.updateToast(id, n != null ? `Added ${f.name}: ${n.toLocaleString()} passage${n === 1 ? '' : 's'} indexed. Ask me about it.` : `Added ${f.name}, now indexed. Ask me about it.`, 'success');
           return;
         }
         if (s.status === 'error') { toast.updateToast(id, s.error || 'Indexing failed.', 'error'); return; }
-        if (Date.now() > deadline) { toast.updateToast(id, `${f.name} is still indexing — it'll be searchable shortly.`, 'success'); return; }
+        if (Date.now() > deadline) { toast.updateToast(id, `${f.name} is still indexing. It'll be searchable shortly.`, 'success'); return; }
         await new Promise((r) => setTimeout(r, 2500));
       }
     } catch (e: any) {
-      toast.updateToast(id, e instanceof EndpointPendingError ? 'Upload is momentarily unavailable — try the knowledge panel.' : (e?.message || 'Upload failed.'), 'error');
+      toast.updateToast(id, e instanceof EndpointPendingError ? 'Upload is momentarily unavailable. Try the knowledge panel.' : (e?.message || 'Upload failed.'), 'error');
     }
   };
   // Voice dictation feeds the composer live; "Optimize" rewrites the notes in place.
@@ -157,7 +157,7 @@ export function CommandFPage({
       const { optimized } = await optimizePrompt(text);
       if (optimized && optimized.trim()) { setInput(optimized.trim()); setFocusKey((k) => k + 1); }
     } catch {
-      toast.error('Could not optimize your prompt — try again.');
+      toast.error('Could not optimize your prompt. Try again.');
     } finally {
       setOptimizing(false);
     }
@@ -227,7 +227,7 @@ export function CommandFPage({
     // ONE local getSession() read for both token + uid (was two back-to-back).
     const { token, uid } = await currentAuth();
     if (!token) {
-      toast.error('Not signed in — please re-authenticate.');
+      toast.error('Not signed in. Please re-authenticate.');
       setLoading(false);
       return;
     }
@@ -588,7 +588,7 @@ export function CommandFPage({
         onClick={optimize}
         disabled={!input.trim() || optimizing || dictation.isListening}
         className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-pill border border-border-light text-caption text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-40 disabled:pointer-events-none`}
-        title="Clean up my prompt — restructure your notes into a sharp, well-formed prompt before sending"
+        title="Clean up my prompt: restructure your notes into a sharp, well-formed prompt before sending"
       >
         {optimizing
           ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" aria-hidden />
@@ -649,7 +649,7 @@ export function CommandFPage({
           <div className="absolute inset-3 z-30 rounded-card border-2 border-dashed border-accent/60 bg-bg-primary/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-fade-in">
             <Upload className="w-8 h-8 text-accent-ink mb-2" strokeWidth={1.5} aria-hidden />
             <p className="text-body font-medium text-text-primary">Drop to add to your knowledge base</p>
-            <p className="text-caption text-text-muted mt-1">PDF, DOCX, or PPTX — indexed and searchable in chat</p>
+            <p className="text-caption text-text-muted mt-1">PDF, DOCX, or PPTX. Indexed and searchable in chat.</p>
           </div>
         )}
         {surface === 'deck' ? (
@@ -660,7 +660,7 @@ export function CommandFPage({
           <>
             {historyError && (
               <div className="mx-6 mt-4 shrink-0 flex items-center justify-between gap-3 rounded-surface border border-border-light bg-bg-secondary px-4 py-2.5 text-caption text-text-secondary animate-fade-in">
-                <span>Couldn't load this conversation — it may be a temporary connection issue.</span>
+                <span>Couldn't load this conversation. It may be a temporary connection issue.</span>
                 <button
                   type="button"
                   onClick={retryHistory}

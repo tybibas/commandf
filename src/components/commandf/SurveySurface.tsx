@@ -55,7 +55,7 @@ export default function SurveySurface({ onBack }: { onBack: () => void }) {
               <span className="inline-flex items-center justify-center w-11 h-11 rounded-surface bg-bg-tertiary text-text-secondary" aria-hidden>
                 <Table2 className="w-5 h-5" strokeWidth={1.5} />
               </span>
-              <h1 className="mt-4 font-serif text-[24px] tracking-tight text-text-primary leading-tight">Survey compendium</h1>
+              <h1 className="mt-4 font-display text-xl tracking-tight text-text-primary leading-tight">Survey compendium</h1>
               <p className="mt-2 text-body text-text-secondary leading-relaxed">
                 Turn raw survey results into a clean slide compendium, straight from your workbook.
               </p>
@@ -111,13 +111,13 @@ export default function SurveySurface({ onBack }: { onBack: () => void }) {
                   <div className={`mt-5 ${!file ? 'opacity-50 pointer-events-none' : ''}`}>
                     <label htmlFor="survey-title" className="eyebrow text-text-muted">Deck title (optional)</label>
                     <input id="survey-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Survey Compendium" disabled={busy || !file} aria-disabled={!file}
-                      className={`mt-1.5 w-full rounded-surface border border-border bg-bg-secondary px-3.5 py-2.5 text-[14px] text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`} />
+                      className={`mt-1.5 w-full rounded-surface border border-border bg-bg-secondary px-3.5 py-2.5 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`} />
                   </div>
 
                   <div className="mt-auto pt-6 flex items-center justify-between gap-3">
                     <span className="text-caption text-text-muted truncate">{file ? file.name : 'Upload a workbook to begin'}</span>
                     <button type="button" onClick={generate} disabled={!file}
-                      className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-control text-[13px] font-medium disabled:opacity-40 ${INK_BTN}`}>
+                      className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-control text-caption font-medium disabled:opacity-40 ${INK_BTN}`}>
                       <Sparkles className="w-4 h-4" strokeWidth={1.75} /> Build compendium
                     </button>
                   </div>

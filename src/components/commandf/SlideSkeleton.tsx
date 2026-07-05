@@ -4,8 +4,8 @@
 // will render with ("this will be a scored comparison table"), never what it
 // will say. Grey blocks only; the real slide image replaces it after render.
 
-const BAR = 'rounded-[2px] bg-bg-tertiary';
-const TINT = 'rounded-[2px] bg-brand-soft';
+const BAR = 'rounded-sm bg-bg-tertiary';
+const TINT = 'rounded-sm bg-accent-soft';
 const FRAME = 'w-full aspect-[16/9] rounded-control border border-border-light bg-bg-primary p-2 flex flex-col gap-1.5 overflow-hidden';
 
 // Collapse the renderer's many archetypes into a handful of honest shapes.
@@ -64,7 +64,7 @@ export default function SlideSkeleton({ template, className }: { template: strin
           {shape === 'line' && (
             <div className="flex-1 relative mt-0.5">
               <div className="absolute inset-x-0 bottom-0 h-px bg-border-hover/50" />
-              <div className="absolute left-0 right-0 top-1/2 h-px bg-brand-soft rotate-[-8deg]" />
+              <div className="absolute left-0 right-0 top-1/2 h-px bg-accent-soft rotate-[-8deg]" />
               {[10, 35, 60, 85].map((l, i) => <div key={i} className={`absolute w-1 h-1 rounded-full ${TINT}`} style={{ left: `${l}%`, top: `${50 - i * 8}%` }} />)}
             </div>
           )}

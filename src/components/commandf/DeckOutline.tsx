@@ -126,7 +126,7 @@ export default function DeckOutline({
                       className={`group text-left rounded-surface p-1.5 border border-transparent hover:border-border-light hover:bg-bg-secondary/40 transition-colors ${MOTION} ${FOCUS}`}>
                       <div className="relative">
                         <SlideSkeleton template={s.slide_template} />
-                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-micro font-mono tabular-nums text-text-muted leading-none">{i + 1}</span>
+                        <span className="absolute top-1 left-1 px-1.5 py-0.5 rounded-sm bg-bg-primary/85 text-micro font-mono tabular-nums text-text-muted leading-none">{i + 1}</span>
                         <span className={`absolute top-1 right-1 w-1.5 h-1.5 rounded-full ${grounded ? 'bg-success' : 'bg-warning'}`}
                           title={grounded ? 'Source found at plan time' : 'No source yet'} aria-hidden />
                       </div>
@@ -145,9 +145,9 @@ export default function DeckOutline({
                   <input value={s.lede} onChange={(e) => retitle(i, e.target.value)} disabled={building} aria-label={`Slide ${i + 1} title`}
                     className={`w-full bg-transparent text-body text-text-primary leading-snug outline-none border-b border-transparent focus:border-border-hover transition-colors ${MOTION} disabled:opacity-60`} />
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-[4px] bg-bg-tertiary text-micro text-text-muted">{prettyTemplate(s.slide_template)}</span>
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm bg-bg-tertiary text-micro text-text-muted">{prettyTemplate(s.slide_template)}</span>
                     {(s.sources ?? []).slice(0, 3).map((src) => (
-                      <span key={src.n} title={src.file} className="inline-flex items-center gap-1 max-w-[180px] px-1.5 py-0.5 rounded-[4px] border border-border-light text-micro text-text-muted">
+                      <span key={src.n} title={src.file} className="inline-flex items-center gap-1 max-w-[180px] px-1.5 py-0.5 rounded-sm border border-border-light text-micro text-text-muted">
                         <FileText className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden />
                         <span className="truncate">{src.file}</span>
                       </span>
@@ -170,7 +170,7 @@ export default function DeckOutline({
 
           {/* Build */}
           <div className="px-6 py-4 md:px-7 border-t border-border-light flex items-center justify-between gap-3">
-            <span className="text-caption text-text-muted truncate">Edit the plan, then build. No re-planning — one render.</span>
+            <span className="text-caption text-text-muted truncate">Edit the plan, then build. One render, no re-planning.</span>
             <button type="button" onClick={build} disabled={building || slides.length === 0}
               className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
               {building ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" strokeWidth={1.75} />}

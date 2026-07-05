@@ -77,7 +77,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label="Account menu"
-          title={`${displayName} — click for options`}
+          title={`${displayName}: click for options`}
           aria-expanded={open}
           aria-haspopup="menu"
           className={`inline-flex items-center justify-center w-9 h-9 rounded-control hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
@@ -333,9 +333,9 @@ export default function Sidebar({
             type="button"
             onClick={onRetrySessions}
             className={`shrink-0 mx-2 mb-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-control text-micro text-text-muted hover:text-text-secondary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
-            title="Couldn't refresh — showing your last-known list. Click to retry."
+            title="Couldn't refresh. Showing your last-known list. Click to retry."
           >
-            Couldn't refresh — retry
+            Couldn't refresh. Retry
           </button>
         )}
       </div>

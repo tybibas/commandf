@@ -108,23 +108,6 @@
   --motion-ease-out: cubic-bezier(0.32, 0.72, 0, 1);
   --motion-ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
 
-  /* ── Deprecated aliases (kept one wave so components don't break) ── */
-  /* Old naming → new semantic tokens */
-  --color-accent-primary: var(--color-structure);       /* was #2A2724 warm-ink primary */
-  --color-accent-hover:   var(--plum-900);
-  --color-accent-pressed: #1A0D1E;
-  --color-accent-muted:   rgba(47,29,52,0.08);
-  --color-brand:          var(--color-accent);          /* old amber → orange-500 */
-  --color-brand-hover:    #D45225;
-  --color-brand-ink:      var(--color-accent-ink);
-  --color-brand-soft:     var(--color-accent-soft);
-
-  /* Surface ladder aliases */
-  --surface-resting: var(--color-bg-secondary);
-  --surface-raised:  var(--paper-0);
-  --surface-hover:   var(--color-bg-secondary);
-  --surface-pressed: var(--color-bg-tertiary);
-
   /* Content width */
   --content-width-max:   1280px;
   --content-width-prose: 720px;
@@ -202,22 +185,6 @@
   --elevation-e1: 0 0 0 1px var(--color-border);
   --elevation-e2: 0 0 0 1px var(--color-border-hover);
   --elevation-e3: 0 0 0 1px var(--color-border-strong);
-
-  /* Deprecated aliases — dark overrides */
-  --color-accent-primary: var(--dark-ink-100);
-  --color-accent-hover:   var(--dark-ink-100);
-  --color-accent-pressed: var(--dark-ink-300);
-  --color-accent-muted:   rgba(234,232,236,0.12);
-  --color-brand:          var(--color-accent);
-  --color-brand-hover:    #E8673D;
-  --color-brand-ink:      var(--color-accent-ink);
-  --color-brand-soft:     var(--color-accent-soft);
-
-  /* Surface ladder */
-  --surface-resting: var(--color-bg-secondary);
-  --surface-raised:  #13161E;
-  --surface-hover:   var(--color-bg-secondary);
-  --surface-pressed: var(--color-bg-tertiary);
 
   /* Semantic soft */
   --color-success-soft:  rgba(64,130,109,0.18);
@@ -462,12 +429,6 @@ h3 { font-size: 1.25rem; }
 }
 
 @layer utilities {
-  /* Tabular numerics */
-  .font-num {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1, "ss01" 1;
-  }
-
   /* Eyebrow — single canonical label style */
   .eyebrow {
     font-size: 11px;

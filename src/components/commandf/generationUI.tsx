@@ -48,7 +48,7 @@ export function PendingNote({ endpoint }: { endpoint: string }) {
             Service momentarily unavailable
           </p>
           <p className="mt-1 text-caption text-text-muted leading-relaxed">
-            We couldn't reach the generator just now. Everything you entered is saved here — try again in a moment.
+            We couldn't reach the generator just now. Everything you entered is saved. Try again in a moment.
           </p>
           <p className="mt-2" title={`Backend endpoint pending: ${endpoint}`}>
             <span className="text-micro text-text-muted font-mono tabular-nums">{endpoint}</span>
@@ -201,7 +201,7 @@ function SlideThumb({
         loading="lazy"
         className={`h-[88px] aspect-[16/9] object-cover rounded-control border bg-bg-primary transition-colors ${busy ? 'border-structure opacity-60' : 'border-border-light'}`}
       />
-      <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-[4px] bg-bg-primary/85 text-micro font-mono text-text-muted leading-none tabular-nums">
+      <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded-sm bg-bg-primary/85 text-micro font-mono text-text-muted leading-none tabular-nums">
         {index + 1}
       </span>
       {slideEdit && (
@@ -210,7 +210,7 @@ function SlideThumb({
           onClick={() => setOpen((v) => !v)}
           disabled={busy}
           aria-label={`Edit slide ${index + 1}`}
-          className={`absolute top-1 right-1 inline-flex items-center justify-center w-5 h-5 rounded-[4px] bg-bg-primary/90 text-text-secondary hover:text-text-primary opacity-0 group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity ${FOCUS} disabled:opacity-40`}
+          className={`absolute top-1 right-1 inline-flex items-center justify-center w-5 h-5 rounded-sm bg-bg-primary/90 text-text-secondary hover:text-text-primary opacity-0 group-hover/thumb:opacity-100 focus-visible:opacity-100 transition-opacity ${FOCUS} disabled:opacity-40`}
         >
           {busy ? <Loader2 className="w-3 h-3 animate-spin" /> : <Wand2 className="w-3 h-3" strokeWidth={1.75} />}
         </button>

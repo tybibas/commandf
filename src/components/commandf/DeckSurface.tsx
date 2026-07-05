@@ -316,7 +316,7 @@ export default function DeckSurface({
               <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
               <p className="text-caption leading-relaxed text-text-secondary">
                 <span className="font-medium text-text-primary">Couldn't reach the outline service.</span>{' '}
-                Your brief is saved — try again in a moment, or skip straight to building the deck.
+                Your brief is saved. Try again in a moment, or skip straight to building the deck.
               </p>
             </div>
           </div>
@@ -326,7 +326,7 @@ export default function DeckSurface({
         <div className="mt-auto pt-6 flex items-center justify-between gap-3">
           <button type="button" onClick={buildDirect} disabled={!canGo}
             className={`text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control disabled:opacity-40 disabled:pointer-events-none`}>
-            Skip — build directly
+            Skip to build
           </button>
           <button type="button" onClick={draftOutline} disabled={!canGo || outlinePhase === 'loading'}
             className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
@@ -403,7 +403,7 @@ function PendingBuildNote() {
         <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
         <p className="text-caption leading-relaxed text-text-secondary">
           <span className="font-medium text-text-primary">Couldn't reach the deck builder.</span>{' '}
-          Your outline is saved — try again in a moment.
+          Your outline is saved. Try again in a moment.
         </p>
       </div>
     </div>

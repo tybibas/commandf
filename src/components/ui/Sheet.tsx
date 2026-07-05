@@ -146,12 +146,12 @@ const Sheet = React.forwardRef<HTMLDivElement, SheetProps>(function Sheet(
       >
         {title !== undefined && (
           <header className="flex items-center justify-between px-5 h-12 border-b border-border-light shrink-0">
-            <div className="text-[15px] font-medium text-text-primary truncate">{title}</div>
+            <div className="text-body-sm font-medium text-text-primary truncate">{title}</div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close panel"
-              className="inline-flex items-center justify-center w-7 h-7 rounded-control text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors duration-fast ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              className="inline-flex items-center justify-center w-7 h-7 rounded-control text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors duration-fast ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M2 2l10 10M12 2L2 12" />

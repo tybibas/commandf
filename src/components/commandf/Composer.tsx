@@ -112,7 +112,7 @@ export default function Composer({
                 aria-haspopup="listbox"
                 aria-expanded={modelOpen}
                 aria-label="Select model"
-                className={`flex items-center gap-1 rounded-control px-2 py-1 text-micro font-medium text-text-secondary hover:text-text-primary hover:bg-surface-hover transition-colors duration-fast ease-out-expo ${FOCUS}`}
+                className={`flex items-center gap-1 rounded-control px-2 py-1 text-micro font-medium text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors duration-fast ease-out-expo ${FOCUS}`}
               >
                 <span className="truncate max-w-[10rem]">{activeModel?.name ?? 'Model'}</span>
                 <ChevronDown className="w-3 h-3 shrink-0" strokeWidth={2.25} />
@@ -131,7 +131,7 @@ export default function Composer({
                         role="option"
                         aria-selected={selected}
                         onClick={() => { onModelChange(m.id); setModelOpen(false); }}
-                        className={`flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-body-sm transition-colors duration-fast ease-out-expo ${selected ? 'bg-surface-hover text-text-primary' : 'text-text-secondary hover:bg-surface-hover hover:text-text-primary'}`}
+                        className={`flex w-full items-center gap-2 rounded-control px-2.5 py-2 text-left text-body-sm transition-colors duration-fast ease-out-expo ${selected ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}
                       >
                         <Check className={`mt-0.5 w-3.5 h-3.5 shrink-0 ${selected ? 'opacity-100' : 'opacity-0'}`} strokeWidth={2.5} />
                         <span className="flex-1 min-w-0">
@@ -153,7 +153,7 @@ export default function Composer({
             <button
               type="button"
               onClick={onCancel}
-              className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-surface-hover transition-colors duration-fast ease-out-expo active:scale-95 ${FOCUS}`}
+              className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-tertiary/70 transition-colors duration-fast ease-out-expo active:scale-95 ${FOCUS}`}
               aria-label="Cancel response"
             >
               <X className="w-4 h-4" strokeWidth={2.25} />

@@ -34,28 +34,11 @@ export default {
         'bg-tertiary':  'var(--color-bg-tertiary)',
         'bg-elevated':  'var(--color-bg-elevated)',
 
-        /* ── W0.2 Deprecated aliases (one-wave backward compat) ─────── */
-        /* Old accent / brand names */
-        'accent-primary': 'var(--color-accent-primary)',
-        'accent-hover':   'var(--color-accent-hover)',
-        'accent-pressed': 'var(--color-accent-pressed)',
-        'accent-muted':   'var(--color-accent-muted)',
-        'brand':          'var(--color-brand)',
-        'brand-hover':    'var(--color-brand-hover)',
-        'brand-ink':      'var(--color-brand-ink)',
-        'brand-soft':     'var(--color-brand-soft)',
-
         /* Borders — canonical keys; class form is border-border-light etc. */
         'border':        'var(--color-border)',
         'border-light':  'var(--color-border-light)',
         'border-hover':  'var(--color-border-hover)',
         'border-strong': 'var(--color-border-strong)',
-
-        /* Surface ladder */
-        'surface-resting': 'var(--surface-resting)',
-        'surface-raised':  'var(--surface-raised)',
-        'surface-hover':   'var(--surface-hover)',
-        'surface-pressed': 'var(--surface-pressed)',
 
         /* Feedback */
         'success':      'var(--color-success)',
@@ -94,11 +77,6 @@ export default {
         'display': ['DM Sans', '"TWK Lausanne"', 'system-ui', 'sans-serif'],
         'body':    ['"IBM Plex Sans"', '-apple-system', 'system-ui', 'sans-serif'],
         'mono':    ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
-        /* Deprecated aliases — keep one wave so components don't break */
-        'serif':   ['DM Sans', '"TWK Lausanne"', 'system-ui', 'sans-serif'],   /* → display */
-        'outfit':  ['DM Sans', '"TWK Lausanne"', 'system-ui', 'sans-serif'],   /* → display */
-        'inter':   ['"IBM Plex Sans"', '-apple-system', 'system-ui', 'sans-serif'], /* → body */
-        'num':     ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],            /* → mono */
       },
       spacing: {
         '4.5': '1.125rem',

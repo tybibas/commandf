@@ -1,8 +1,8 @@
 # Command F — Design System (v2 "Partner's Instrument")
 
-**Status:** PROPOSED — pending operator approval. Once approved, this file is the single
-source of truth for every visual decision in this repo. Any agent styling a surface consumes
-tokens from here; hardcoding a value that exists as a token is a review-blocking defect.
+**Status:** CANONICAL — approved by operator 2026-07-05, Waves 0–4 applied. This file is the
+single source of truth for every visual decision in this repo. Any agent styling a surface
+consumes tokens from here; hardcoding a value that exists as a token is a review-blocking defect.
 
 **Rationale & evidence:** every decision here is grounded in
 `QuantiFire IDE V3/.agents/design/REFERENCE_BOARD.md` (research reports + ~45 screenshots).
@@ -146,11 +146,13 @@ parentheses.
 --elevation-float: 0 4px 16px rgba(37,23,41,0.10), 0 1px 3px rgba(37,23,41,0.06);
 ```
 
-Migration notes: `--color-accent-primary` (#2A2724) → `--color-structure`; `--color-brand`
-(#EF8E07 amber) → `--color-accent`; `--color-brand-ink` → `--color-accent-ink`;
-`--color-brand-soft` → `--color-accent-soft`. Keep old names as deprecated aliases for one
-wave, then delete. Delete: v1 motion vars, `shadow-dark-*`, `shadow-gold*` (rework the
-decision-required pulse on `--color-accent` if still needed).
+Migration notes (Wave 4 — aliases removed): `--color-accent-primary` → `--color-structure`;
+`--color-accent-hover/pressed/muted` → `--color-structure-hover` or `--color-bg-*` surfaces;
+`--color-brand*` (amber) → `--color-accent*` (orange); `--surface-*` ladder → `--color-bg-*`
+semantics; font aliases `serif`/`outfit`/`inter`/`num` → `display`/`body`/`mono`. All deprecated
+aliases are now deleted from both `tailwind.config.js` and `index.css`. Kept: v1 motion vars
+were already removed in Wave 0; `shadow-dark-*` / `shadow-gold*` removed in Wave 0/1.
+One kept item: `'—'` as tabular data placeholder in KnowledgePanel stat display (data, not prose).
 
 ---
 

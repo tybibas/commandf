@@ -54,7 +54,7 @@ export function SetPasswordScreen() {
         <div className="bg-bg-elevated rounded-surface border border-border-light shadow-float p-8">
           <div className="text-center mb-8">
             {/* Wordmark — editorial serif, matches the login surface */}
-            <span className="font-serif text-[28px] tracking-[-0.015em] text-text-primary leading-none">Command F</span>
+            <span className="font-display text-2xl tracking-[-0.015em] text-text-primary leading-none">Command F</span>
             <div className="mt-5 flex items-center justify-center gap-2 text-text-secondary">
               <ShieldCheck className="h-4 w-4 text-success" strokeWidth={1.75} />
               <p className="text-body-sm font-medium text-text-primary">Set your password</p>
@@ -108,7 +108,7 @@ export function SetPasswordScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full h-9 px-4 rounded-control text-body-sm font-medium bg-text-primary text-bg-primary hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
+              className="w-full h-9 px-4 rounded-control text-body-sm font-medium bg-structure text-structure-ink hover:bg-structure-hover active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-fast ease-out-expo"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
