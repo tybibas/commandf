@@ -93,6 +93,11 @@ const pairs = [
   ['LIGHT: text-muted on bg-secondary',  P.ink500, P.paper100],
   ['LIGHT: text-muted on bg-tertiary (worst surface)', P.ink500, P.paper200],
   ['LIGHT: text-muted on bg-elevated',   P.ink500, P.paper0],
+  // Deck Studio (F3): the slide page (bg-studio-slide) is ALWAYS paper-50, in
+  // BOTH themes — its empty-state text uses the theme-invariant --ink-500
+  // primitive directly (not text-text-muted, which would flip to a
+  // light-on-dark ink in dark theme and go invisible on this paper surface).
+  ['STUDIO: ink-500 (paper-locked) on studio-slide (always paper-50)', P.ink500, P.paper50],
   // accent-ink (#A8430F) — orange as text on paper surfaces
   ['LIGHT: accent-ink on bg-primary',   P.orange700, P.paper50],
   ['LIGHT: accent-ink on bg-secondary', P.orange700, P.paper100],

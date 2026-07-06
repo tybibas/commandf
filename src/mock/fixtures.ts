@@ -3,7 +3,10 @@
 // to exercise every surface through the REAL api.ts contract with a stubbed
 // fetch + Supabase session, so screenshots reflect the real components.
 
-import type { Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline } from '../components/commandf/api';
+import type {
+  Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline,
+  StudioSession, DeckStreamEvent,
+} from '../components/commandf/api';
 
 const now = 1750000000000; // fixed epoch (no Date.now in fixtures → deterministic)
 const hoursAgo = (h: number) => new Date(now - h * 3600_000).toISOString();
@@ -99,12 +102,207 @@ export const MOCK_OUTLINE: DeckOutline = {
   plan: { note: 'raw emit_plan echoed back as approved_plan' },
 };
 
+// ── Deck Studio (C-2) mock substrate ─────────────────────────────────────────
+// A data-URI SVG stand-in for a rendered slide PNG. `<img>` loads bypass the
+// stubbed window.fetch, so the canvas/filmstrip need directly-loadable sources.
+// The `rev` is stamped visibly so a re-fetched (edited) slide is verifiably
+// different — this is how the dirty-slide re-render is confirmed at $0.
+const SLIDE_TITLES = [
+  'Executive summary', 'Status dashboard', 'Options, scored',
+  'Risks we are tracking', 'What we need today',
+];
+export function mockSlidePreview(index: number, rev: number): string {
+  const t = SLIDE_TITLES[index] ?? `Slide ${index + 1}`;
+  const svg =
+    "<svg xmlns='http://www.w3.org/2000/svg' width='640' height='360' viewBox='0 0 640 360'>" +
+    "<rect width='640' height='360' fill='#FEFDFA'/>" +
+    "<rect x='0' y='0' width='640' height='6' fill='#2F1D34'/>" +
+    `<text x='40' y='74' font-family='DM Sans, sans-serif' font-size='30' fill='#282828'>${t}</text>` +
+    "<rect x='40' y='104' width='420' height='3' fill='#EB5E28'/>" +
+    "<rect x='40' y='150' width='560' height='14' rx='3' fill='#EFEBE4'/>" +
+    "<rect x='40' y='182' width='520' height='14' rx='3' fill='#EFEBE4'/>" +
+    "<rect x='40' y='214' width='480' height='14' rx='3' fill='#EFEBE4'/>" +
+    `<text x='40' y='332' font-family='IBM Plex Mono, monospace' font-size='13' fill='#A49B8A'>S${index + 1} · rev ${rev}</text>` +
+    '</svg>';
+  // `btoa` only round-trips Latin-1 correctly; the caption's middle-dot (·,
+  // U+00B7) becomes a lone byte that is invalid UTF-8 once the browser decodes
+  // this as `image/svg+xml` XML — the SVG then fails to parse SILENTLY
+  // (naturalWidth 0, no console error, no network event). encodeURIComponent
+  // + unescape re-expresses the string as a byte sequence btoa can encode
+  // losslessly, so the decoded bytes are valid UTF-8 again.
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
+}
+export const MOCK_SLIDE_IDS = ['s_ov01', 's_st02', 's_sc03', 's_rk04', 's_ns05'];
+const MOCK_DECK_PREVIEWS = MOCK_SLIDE_IDS.map((_, i) => mockSlidePreview(i, 1));
+
 export const MOCK_DECK_STATUS = {
   status: 'complete' as const,
   slide_count: 5,
   title: 'Q3 SteerCo Update — Value Creation Plan',
   download_url: 'https://mock.local/generate-deck/mock-job/download',
+  preview_urls: MOCK_DECK_PREVIEWS,
+  deck_rev: 1,
   placeholders: ['[PLACEHOLDER: confirm Q3 loss-ratio figure with the deal team]'],
 };
+
+// Studio session (§4) — build-format options + category-grounding provenance.
+export const MOCK_STUDIO_SESSION: StudioSession = {
+  deck_rev: 1,
+  slide_order: MOCK_SLIDE_IDS,
+  build_format_options: [
+    { format: 'proposal', target_category: 'proposal', label: 'Proposal' },
+    { format: 'engagement_recap', target_category: 'client_deliverable', label: 'Engagement recap' },
+    { format: 'pov_memo', target_category: 'client_deliverable', label: 'POV memo' },
+  ],
+  active_format: 'engagement_recap',
+  active_target_category: 'client_deliverable',
+  grounding: {
+    target_category: 'client_deliverable',
+    content_pool: {
+      n_chunks: 12, n_files: 9, category_matched_files: 4,
+      top_similarity: 0.71, similarity_floor: 0.2,
+    },
+    style_exemplars: {
+      filter_deliverable_type: 'engagement_recap',
+      n_matched: 3,
+      fell_back_unfiltered: false,
+      exemplars: [
+        {
+          deck_name: 'Cardinal Mutual — Engagement Retrospective',
+          deliverable_type: 'engagement_recap', service_line: 'ValueCreation',
+          density: 'high', uses_harvey_balls: true,
+          chart_types: ['bar', 'waterfall'], frameworks: ['2x2'],
+          archetype_sequence: ['exec_summary', 'status_dashboard', 'scored_table', 'next_steps'],
+          png_prefix: 'cardinal', n_slides: 11,
+        },
+        {
+          deck_name: 'Stonepoint Repositioning — Board Deck',
+          deliverable_type: 'engagement_recap', service_line: 'Repositioning',
+          density: 'medium', uses_harvey_balls: false,
+          chart_types: ['line'], frameworks: ['matrix_2x2'],
+          archetype_sequence: ['exec_summary', 'kpi', 'matrix_2x2', 'next_steps'],
+          png_prefix: 'stonepoint', n_slides: 9,
+        },
+      ],
+    },
+  },
+};
+
+// A canned edit-op batch stream (§3.1 SSE lines) — user asked to tighten the
+// objectives and turn the risk chart into a donut. Two slides go dirty (0 and 3);
+// the terminal batch_done bumps deck_rev to 2 so re-fetched previews render "rev 2".
+export const MOCK_DECK_EDIT_STREAM: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_01', planned: 3, summary: 'Tightening the summary and reworking the risk chart' },
+  { event: 'assistant_delta', text: 'On it — ' },
+  { event: 'assistant_delta', text: 'tightening the executive summary ' },
+  { event: 'assistant_delta', text: 'and switching the risk chart to a donut.' },
+  { event: 'phase', label: 'Rewriting the executive summary', state: 'active' },
+  {
+    event: 'op', index: 0, status: 'applied',
+    op: {
+      op_id: 'op_a1', batch_id: 'eb_mock_01', type: 'rewrite_body',
+      target: { slide_id: 's_ov01', element_id: 'body' },
+      summary: 'Tightened the executive summary to three lines',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  { event: 'slide_dirty', slide_ids: ['s_ov01'], slide_indices: [1] },
+  {
+    event: 'op', index: 1, status: 'applied',
+    op: {
+      op_id: 'op_a2', batch_id: 'eb_mock_01', type: 'edit_bullet',
+      target: { slide_id: 's_ov01', element_id: 'b_lead' },
+      summary: 'Sharpened the opening bullet to name the single decision',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  { event: 'phase', label: 'Reworking the risk chart', state: 'active' },
+  {
+    event: 'op', index: 2, status: 'applied',
+    op: {
+      op_id: 'op_a3', batch_id: 'eb_mock_01', type: 'change_chart_type',
+      target: { slide_id: 's_rk04', element_id: 'chart' },
+      summary: 'Changed the risk chart to a donut',
+      reversible: true, affects_slides: ['s_rk04'],
+    },
+  },
+  { event: 'slide_dirty', slide_ids: ['s_rk04'], slide_indices: [4] },
+  { event: 'batch_done', batch_id: 'eb_mock_01', deck_rev: 2, applied: 3, failed: 0, slide_order: MOCK_SLIDE_IDS },
+];
+
+// A forward batch where one op FAILS (status:'failed' + error) — exercises the
+// failed op card. The chart op fails; only slide 1 goes dirty; applied 2, failed 1.
+export const MOCK_DECK_EDIT_STREAM_FAIL: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_02', planned: 2, summary: 'Tightening the summary and reworking the risk chart' },
+  { event: 'assistant_delta', text: 'Tightened the summary. ' },
+  { event: 'assistant_delta', text: "The chart change didn't apply." },
+  { event: 'phase', label: 'Rewriting the executive summary', state: 'active' },
+  {
+    event: 'op', index: 0, status: 'applied',
+    op: {
+      op_id: 'op_b1', batch_id: 'eb_mock_02', type: 'rewrite_body',
+      target: { slide_id: 's_ov01', element_id: 'body' },
+      summary: 'Tightened the executive summary to three lines',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  { event: 'slide_dirty', slide_ids: ['s_ov01'], slide_indices: [1] },
+  {
+    event: 'op', index: 1, status: 'failed',
+    error: 'The risk chart has no numeric series to convert to a donut.',
+    op: {
+      op_id: 'op_b2', batch_id: 'eb_mock_02', type: 'change_chart_type',
+      target: { slide_id: 's_rk04', element_id: 'chart' },
+      summary: 'Change the risk chart to a donut',
+      reversible: false, affects_slides: ['s_rk04'],
+    },
+  },
+  { event: 'batch_done', batch_id: 'eb_mock_02', deck_rev: 2, applied: 1, failed: 1, slide_order: MOCK_SLIDE_IDS },
+];
+
+// Undo of eb_mock_01 — the backend streams the INVERSE ops back (same shape). The
+// deck_rev still advances (monotonic; bumps on undo too, §3.4); slides 1 & 4 re-render.
+export const MOCK_DECK_UNDO_STREAM: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_01_undo', planned: 3, summary: 'Reverting 3 changes' },
+  {
+    event: 'op', index: 0, status: 'applied',
+    op: {
+      op_id: 'op_a3i', batch_id: 'eb_mock_01_undo', type: 'change_chart_type',
+      target: { slide_id: 's_rk04', element_id: 'chart' },
+      summary: 'Reverted the risk chart to its bar form',
+      reversible: true, affects_slides: ['s_rk04'],
+    },
+  },
+  {
+    event: 'op', index: 1, status: 'applied',
+    op: {
+      op_id: 'op_a2i', batch_id: 'eb_mock_01_undo', type: 'edit_bullet',
+      target: { slide_id: 's_ov01', element_id: 'b_lead' },
+      summary: 'Restored the original opening bullet',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  {
+    event: 'op', index: 2, status: 'applied',
+    op: {
+      op_id: 'op_a1i', batch_id: 'eb_mock_01_undo', type: 'rewrite_body',
+      target: { slide_id: 's_ov01', element_id: 'body' },
+      summary: 'Restored the original executive summary',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  { event: 'slide_dirty', slide_ids: ['s_ov01', 's_rk04'], slide_indices: [1, 4] },
+  { event: 'batch_done', batch_id: 'eb_mock_01_undo', deck_rev: 3, applied: 3, failed: 0, slide_order: MOCK_SLIDE_IDS },
+];
+
+// Per-op undo of a DEPENDENT op — the backend can't isolate it and emits a
+// recoverable error; the UI must fall back to offering a whole-group undo.
+export const MOCK_DECK_UNDO_DEP_ERROR: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_01_undo', planned: 1, summary: 'Undoing one change' },
+  {
+    event: 'error', recoverable: true,
+    message: "This change can't be undone on its own because a later change builds on it. Undo the whole group instead?",
+  },
+];
 
 export const MOCK_UPLOAD_STATUS = { status: 'complete' as const, chunks_indexed: 87 };

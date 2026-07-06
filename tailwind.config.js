@@ -28,6 +28,10 @@ export default {
 
         'focus-ring': 'var(--color-focus-ring)',
 
+        /* Deck Studio (DESIGN.md §3) — class forms bg-studio-canvas / bg-studio-slide */
+        'studio-canvas': 'var(--color-studio-canvas)',
+        'studio-slide':  'var(--color-studio-slide)',
+
         /* Surfaces — canonical keys; class form is bg-bg-primary etc. */
         'bg-primary':   'var(--color-bg-primary)',
         'bg-secondary': 'var(--color-bg-secondary)',

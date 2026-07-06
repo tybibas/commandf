@@ -11,7 +11,48 @@ import { supabase } from '../lib/supabase';
 import {
   MOCK_MODELS, MOCK_SESSIONS, MOCK_BRIEFING, MOCK_CHAT_RESPONSE, MOCK_HISTORY,
   MOCK_OUTLINE, MOCK_DECK_STATUS, MOCK_UPLOAD_STATUS,
+  MOCK_STUDIO_SESSION, MOCK_DECK_EDIT_STREAM, MOCK_DECK_EDIT_STREAM_FAIL,
+  MOCK_DECK_UNDO_STREAM, MOCK_DECK_UNDO_DEP_ERROR, mockSlidePreview,
 } from './fixtures';
+
+// Parse a stubbed request's JSON body (deck /chat + /undo route on message/target).
+const parseBody = (init?: RequestInit): Record<string, unknown> => {
+  try { return init?.body ? JSON.parse(init.body as string) : {}; } catch { return {}; }
+};
+
+// Grounding trust-footer states for verifying F6, chosen by ?grounding=:
+//  (default) populated · pending = null grounding (the real session-open shape) ·
+//  fallback = fell_back_unfiltered (the "no category exemplars matched" warning).
+const studioSessionFor = (mode: string | null, format?: string | null) => {
+  let s = MOCK_STUDIO_SESSION;
+  // Honor ?format= (the backend's intended re-issue-retrieval path): reflect the
+  // chosen format + its target category in the returned session.
+  if (format) {
+    const opt = s.build_format_options.find((o) => o.format === format);
+    if (opt) {
+      s = {
+        ...s,
+        active_format: opt.format,
+        active_target_category: opt.target_category,
+        grounding: { ...s.grounding, target_category: opt.target_category },
+      };
+    }
+  }
+  if (mode === 'pending') {
+    return { ...s, grounding: { ...s.grounding, content_pool: null,
+      style_exemplars: { ...s.grounding.style_exemplars, n_matched: null, fell_back_unfiltered: null, exemplars: [] } } };
+  }
+  if (mode === 'fallback') {
+    return { ...s, grounding: { ...s.grounding,
+      style_exemplars: { ...s.grounding.style_exemplars, fell_back_unfiltered: true, exemplars: [] } } };
+  }
+  return s;
+};
+
+// Deck Studio previews: `<img>` loads bypass the fetch stub below, so the api
+// client reads slide PNGs from this hook in the harness (see deckSlidePreviewUrl).
+(window as unknown as { __commandfMockPreview?: (i: number, rev: number) => string })
+  .__commandfMockPreview = mockSlidePreview;
 
 // ── Stub the Supabase session (authHeaders/currentToken succeed) ─────────────
 (supabase.auth as any).getSession = async () => ({
@@ -32,6 +73,23 @@ import {
 const jsonRes = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+// Streams SSE `data: {json}\n\n` frames with a gap between them, so the reader's
+// incremental parse and the UI's live op rendering are exercised — not a single blob.
+const sseRes = (events: unknown[], gap = 240) =>
+  new Response(
+    new ReadableStream({
+      async start(controller) {
+        const enc = new TextEncoder();
+        for (const evt of events) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(evt)}\n\n`));
+          await new Promise((r) => setTimeout(r, gap));
+        }
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  );
+
 const realFetch = window.fetch.bind(window);
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -45,6 +103,24 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (path.includes('/optimize-prompt')) {
       await new Promise((r) => setTimeout(r, 500));
       return jsonRes({ optimized: 'Build a board/SteerCo update deck for the Q3 value-creation review.\n\nAudience: the board (partner-level, answer-first).\nDecision to drive: approve the remaining structural change.\nCover: quick wins banked to date, the structural decision and its de-risking, and the two tracked risks with mitigations.' });
+    }
+    // Deck Studio (C-2): studio session (B/A) + streaming edit-op chat. These MUST
+    // precede the generic /chat handler — the deck-chat URL also contains '/chat'.
+    if (path.includes('/generate-deck') && path.includes('/studio')) {
+      const mode = new URLSearchParams(window.location.search).get('grounding');
+      const fmt = (() => { try { return new URL(url).searchParams.get('format'); } catch { return null; } })();
+      return jsonRes(studioSessionFor(mode, fmt));
+    }
+    if (path.includes('/generate-deck') && path.includes('/undo')) {
+      // Per-op undo of the dependent bullet op (op_a2) can't be isolated -> the
+      // backend emits a recoverable error and the UI offers a whole-group undo.
+      const b = parseBody(init);
+      if (b.op_id === 'op_a2') return sseRes(MOCK_DECK_UNDO_DEP_ERROR);
+      return sseRes(MOCK_DECK_UNDO_STREAM);
+    }
+    if (path.includes('/generate-deck') && path.includes('/chat')) {
+      const b = parseBody(init);
+      return sseRes(/fail/i.test(String(b.message ?? '')) ? MOCK_DECK_EDIT_STREAM_FAIL : MOCK_DECK_EDIT_STREAM);
     }
     if (path.includes('/chat')) {
       await new Promise((r) => setTimeout(r, 650)); // let the typing indicator show
