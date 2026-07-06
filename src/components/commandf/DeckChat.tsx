@@ -178,7 +178,7 @@ export default function DeckChat({
       <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-4 py-4 space-y-3">
         {turns.length === 0 && (
           <p className="text-caption text-text-muted leading-relaxed">
-            Describe an edit — "tighten the executive summary", "make the risk chart a donut",
+            Describe an edit: "tighten the executive summary", "make the risk chart a donut",
             "add a slide on the timeline".
           </p>
         )}

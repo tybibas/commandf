@@ -91,8 +91,8 @@ export default function DeckStudio({
   const subtitle = phase
     ? phase.label
     : ops.length > 0
-      ? `${ops.length} change${ops.length === 1 ? '' : 's'} applied so far — every edit previews instantly.`
-      : 'Chat to edit — every change previews instantly.';
+      ? `${ops.length} change${ops.length === 1 ? '' : 's'} applied so far. Every edit previews instantly.`
+      : 'Chat to edit. Every change previews instantly.';
 
   return (
     <div className="flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
