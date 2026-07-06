@@ -8,7 +8,7 @@ import Composer from './Composer';
 let _turnSeq = 0;
 const nextId = () => `t-${++_turnSeq}`;
 
-type OpEntry = { op: DeckOp; status: 'applied' | 'failed' };
+type OpEntry = { op: DeckOp; status: 'applied' | 'failed'; error?: string };
 type ChatTurn =
   | { id: string; role: 'user'; text: string }
   | {
@@ -27,7 +27,7 @@ function opIcon(type: string) {
   return Wand2;
 }
 
-function OpCard({ op, status }: OpEntry) {
+function OpCard({ op, status, error }: OpEntry) {
   const Icon = opIcon(op.type);
   const ok = status === 'applied';
   return (
@@ -39,6 +39,8 @@ function OpCard({ op, status }: OpEntry) {
       <Icon className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" strokeWidth={1.75} aria-hidden />
       <div className="min-w-0 flex-1">
         <p className="text-caption text-text-primary leading-snug">{op.summary}</p>
+        {/* A failed op keeps its summary (what was attempted) + why it didn't apply. */}
+        {!ok && error && <p className="mt-0.5 text-micro text-error leading-snug">{error}</p>}
         <span className="mt-1 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-bg-tertiary text-micro font-mono text-text-muted">
           {op.target.slide_id}{op.target.element_id ? ` · ${op.target.element_id}` : ''}
         </span>
@@ -152,11 +154,12 @@ export default function DeckChat({
       const result = await sendDeckChatStream(jobId, text, {
         onBatchStart: (e) => updateAssistant(assistantId, (t) => ({ ...t, batchId: e.batch_id })),
         onAssistantDelta: (chunk) => updateAssistant(assistantId, (t) => ({ ...t, text: t.text + chunk })),
-        onOp: (op, _index, status) => {
+        onOp: (op, _index, status, error) => {
           onOp(op);
-          updateAssistant(assistantId, (t) => ({ ...t, ops: [...t.ops, { op, status }] }));
+          updateAssistant(assistantId, (t) => ({ ...t, ops: [...t.ops, { op, status, error }] }));
         },
-        onSlideDirty: (_ids, indices) => onSlideDirty(indices),
+        // Wire indices are 1-based; the studio state uses 0-based array positions.
+        onSlideDirty: (_ids, indices) => onSlideDirty(indices.map((i) => i - 1)),
         onPhase: (label, state) => {
           onPhase(label, state);
           updateAssistant(assistantId, (t) => ({ ...t, phase: state === 'done' ? undefined : label }));

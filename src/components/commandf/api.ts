@@ -161,17 +161,21 @@ export type DeckOp = {
   after?: unknown;
 };
 
-/** Stream event lines (§3.1). Discriminated on `event`. */
+/** Stream event lines (§3.1). Discriminated on `event`. NOTE `slide_indices` are
+ *  1-BASED (they match pdftoppm page numbering and the /preview/{slide_index}
+ *  path); the UI converts to 0-based array positions at the boundary. A failed op
+ *  carries an extra `error` string. `batch_done` carries the fresh `slide_order`
+ *  (authoritative after add/remove/reorder — use it to map ids→positions). */
 export type DeckStreamEvent =
   | { event: 'batch_start'; batch_id: string; planned: number; summary: string }
   | { event: 'assistant_delta'; text: string }
-  | { event: 'op'; op: DeckOp; index: number; status: 'applied' | 'failed' }
+  | { event: 'op'; op: DeckOp; index: number; status: 'applied' | 'failed'; error?: string }
   | { event: 'slide_dirty'; slide_ids: string[]; slide_indices: number[] }
   | { event: 'phase'; label: string; state: 'active' | 'done' }
-  | { event: 'batch_done'; batch_id: string; deck_rev: number; applied: number; failed: number }
+  | { event: 'batch_done'; batch_id: string; deck_rev: number; applied: number; failed: number; slide_order?: string[] }
   | { event: 'error'; recoverable: boolean; message: string };
 
-export type DeckBatchDone = { batch_id: string; deck_rev: number; applied: number; failed: number };
+export type DeckBatchDone = { batch_id: string; deck_rev: number; applied: number; failed: number; slide_order?: string[] };
 
 // B-reflection (§4) — category grounding, delivered as STRUCTURED JSON on session
 // open (the backend does the extraction; the UI never parses a style string).
@@ -190,22 +194,28 @@ export type StyleExemplar = {
 };
 export type DeckGrounding = {
   target_category: string;
+  // `content_pool` is NULL on session-open by design ("grounding pending" — real
+  // retrieval provenance needs a live embed+RPC the free-testing policy skips). A
+  // real authoring turn may populate it. The UI must treat null as "pending", not 0.
   content_pool: {
     n_chunks: number; n_files: number; category_matched_files: number;
     top_similarity: number; similarity_floor: number;
-  };
+  } | null;
   style_exemplars: {
     filter_deliverable_type: string;
-    n_matched: number;
+    // null = pending (see content_pool); a number once retrieval has run.
+    n_matched: number | null;
     /** TRUE => B3 loud fail-open fired (no category-matched style exemplars) — the
-     *  trust footer MUST surface this as a soft warning, not hide it. */
-    fell_back_unfiltered: boolean;
+     *  trust footer MUST surface this as a soft warning. null = pending. */
+    fell_back_unfiltered: boolean | null;
     exemplars: StyleExemplar[];
   };
 };
-/** Returned when a built deck enters a studio session (§4). */
+/** Returned by GET /generate-deck/{job_id}/studio (§4). `slide_order` is the
+ *  authoritative id→position map (id at 0-based index i is slide i+1 in the deck). */
 export type StudioSession = {
   deck_rev: number;
+  slide_order: string[];
   build_format_options: BuildFormatOption[];
   active_format: string;
   active_target_category: string;
@@ -648,11 +658,11 @@ export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
 export async function fetchStudioSession(jobId: string): Promise<StudioSession> {
   const url = requireUrl();
   const res = await fetchWithTimeout(
-    `${url}/generate-deck/${encodeURIComponent(jobId)}/studio-session`,
+    `${url}/generate-deck/${encodeURIComponent(jobId)}/studio`,
     { headers: await authHeaders() },
     T_GEN, 'Opening studio session',
   );
-  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/studio-session');
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/studio');
   return json<StudioSession>(res);
 }
 
@@ -666,11 +676,13 @@ export async function fetchStudioSession(jobId: string): Promise<StudioSession> 
 export async function deckSlidePreviewUrl(
   jobId: string, slideIndex: number, deckRev: number,
 ): Promise<string> {
+  // `slideIndex` is a 0-based array position; the /preview endpoint is 1-BASED
+  // (matches pdftoppm paging + slide_dirty.slide_indices), so send slideIndex+1.
   const mock = (window as unknown as { __commandfMockPreview?: (i: number, rev: number) => string })
     .__commandfMockPreview;
   if (mock) return mock(slideIndex, deckRev);
   const url = requireUrl();
-  const base = `${url}/generate-deck/${encodeURIComponent(jobId)}/preview/${slideIndex}?v=${deckRev}`;
+  const base = `${url}/generate-deck/${encodeURIComponent(jobId)}/preview/${slideIndex + 1}?v=${deckRev}`;
   const token = await currentToken();
   return token ? `${base}&token=${encodeURIComponent(token)}` : base;
 }
@@ -680,7 +692,8 @@ export async function deckSlidePreviewUrl(
 export type DeckChatHandlers = {
   onBatchStart?: (e: { batch_id: string; planned: number; summary: string }) => void;
   onAssistantDelta?: (text: string) => void;
-  onOp?: (op: DeckOp, index: number, status: 'applied' | 'failed') => void;
+  onOp?: (op: DeckOp, index: number, status: 'applied' | 'failed', error?: string) => void;
+  // `slideIndices` are 1-based as sent on the wire (the caller converts to 0-based).
   onSlideDirty?: (slideIds: string[], slideIndices: number[]) => void;
   onPhase?: (label: string, state: 'active' | 'done') => void;
   onError?: (message: string, recoverable: boolean) => void;
@@ -734,10 +747,10 @@ export async function sendDeckChatStream(
         switch (evt.event) {
           case 'batch_start': handlers.onBatchStart?.(evt); break;
           case 'assistant_delta': handlers.onAssistantDelta?.(evt.text ?? ''); break;
-          case 'op': handlers.onOp?.(evt.op, evt.index, evt.status); break;
+          case 'op': handlers.onOp?.(evt.op, evt.index, evt.status, evt.error); break;
           case 'slide_dirty': handlers.onSlideDirty?.(evt.slide_ids ?? [], evt.slide_indices ?? []); break;
           case 'phase': handlers.onPhase?.(evt.label, evt.state); break;
-          case 'batch_done': final = { batch_id: evt.batch_id, deck_rev: evt.deck_rev, applied: evt.applied, failed: evt.failed }; break;
+          case 'batch_done': final = { batch_id: evt.batch_id, deck_rev: evt.deck_rev, applied: evt.applied, failed: evt.failed, slide_order: evt.slide_order }; break;
           case 'error': handlers.onError?.(evt.message, evt.recoverable); throw new Error(evt.message || 'deck edit failed');
         }
       }

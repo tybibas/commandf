@@ -71,7 +71,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     // Deck Studio (C-2): studio session (B/A) + streaming edit-op chat. These MUST
     // precede the generic /chat handler — the deck-chat URL also contains '/chat'.
-    if (path.includes('/generate-deck') && path.includes('/studio-session')) return jsonRes(MOCK_STUDIO_SESSION);
+    if (path.includes('/generate-deck') && path.includes('/studio')) return jsonRes(MOCK_STUDIO_SESSION);
     if (path.includes('/generate-deck') && path.includes('/chat')) return sseRes(MOCK_DECK_EDIT_STREAM);
     if (path.includes('/chat')) {
       await new Promise((r) => setTimeout(r, 650)); // let the typing indicator show

@@ -148,6 +148,7 @@ export const MOCK_DECK_STATUS = {
 // Studio session (§4) — build-format options + category-grounding provenance.
 export const MOCK_STUDIO_SESSION: StudioSession = {
   deck_rev: 1,
+  slide_order: MOCK_SLIDE_IDS,
   build_format_options: [
     { format: 'proposal', target_category: 'proposal', label: 'Proposal' },
     { format: 'engagement_recap', target_category: 'client_deliverable', label: 'Engagement recap' },
@@ -205,7 +206,7 @@ export const MOCK_DECK_EDIT_STREAM: DeckStreamEvent[] = [
       reversible: true, affects_slides: ['s_ov01'],
     },
   },
-  { event: 'slide_dirty', slide_ids: ['s_ov01'], slide_indices: [0] },
+  { event: 'slide_dirty', slide_ids: ['s_ov01'], slide_indices: [1] },
   {
     event: 'op', index: 1, status: 'applied',
     op: {
@@ -225,8 +226,8 @@ export const MOCK_DECK_EDIT_STREAM: DeckStreamEvent[] = [
       reversible: true, affects_slides: ['s_rk04'],
     },
   },
-  { event: 'slide_dirty', slide_ids: ['s_rk04'], slide_indices: [3] },
-  { event: 'batch_done', batch_id: 'eb_mock_01', deck_rev: 2, applied: 3, failed: 0 },
+  { event: 'slide_dirty', slide_ids: ['s_rk04'], slide_indices: [4] },
+  { event: 'batch_done', batch_id: 'eb_mock_01', deck_rev: 2, applied: 3, failed: 0, slide_order: MOCK_SLIDE_IDS },
 ];
 
 export const MOCK_UPLOAD_STATUS = { status: 'complete' as const, chunks_indexed: 87 };
