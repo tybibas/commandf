@@ -1,4 +1,4 @@
-import { Sparkles } from 'lucide-react';
+import { Sparkles, ArrowRight, type LucideIcon } from 'lucide-react';
 
 const MOTION = 'duration-fast ease-out-expo';
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -19,7 +19,10 @@ function ActionistMark({ className }: { className?: string }) {
   );
 }
 
-type IconType = React.ComponentType<{ className?: string; strokeWidth?: number }>;
+// Every icon in this app is a lucide icon; typing to LucideIcon keeps the
+// QuickAction / ExampleCard icon fields structurally exact (a hand-narrowed
+// ComponentType alias mismatches lucide's ref-forwarding signature).
+type IconType = LucideIcon;
 
 export interface QuickAction {
   label: string;
@@ -27,12 +30,13 @@ export interface QuickAction {
   onClick: () => void;
 }
 
-/** One landing example card (W6.1) — a real question, not a fabricated one,
- * that pre-fills the composer on click. See DESIGN.md §3 "Example card". */
+/** One landing example card — a named capability plus ONE real, fully-readable
+ * example question (never truncated) that pre-fills the composer on click.
+ * See DESIGN.md §3 "Example card". */
 export interface ExampleCard {
-  category: string;
+  capability: string;
   question: string;
-  description: string;
+  icon: IconType;
   onClick: () => void;
 }
 
@@ -109,20 +113,27 @@ export default function Landing({
             </button>
           </div>
 
-          {/* Example cards (W6.1) — real questions, not chips, that teach what
-              the firm's memory can answer. Click pre-fills the composer. */}
+          {/* Example cards — each teaches one retrieval job the firm's memory
+              answers: a named capability plus one real, fully-readable question
+              (never truncated). Click pre-fills the composer. Deck-building is
+              the separate plum pill above, not a card. */}
           {exampleCards.length > 0 && (
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in" style={{ animationDelay: '110ms' }}>
-              {exampleCards.map(({ category, question, description, onClick }) => (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch animate-fade-in" style={{ animationDelay: '110ms' }}>
+              {exampleCards.map(({ capability, question, icon: Icon, onClick }) => (
                 <button
                   key={question}
                   type="button"
                   onClick={onClick}
-                  className={`group text-left bg-bg-elevated border border-border-light rounded-surface p-4 hover:border-border-hover hover:-translate-y-px transition-all ${MOTION} ${FOCUS}`}
+                  className={`group relative flex h-full flex-col text-left bg-bg-elevated border border-border-light rounded-surface p-4 hover:border-border-hover hover:-translate-y-px transition-all ${MOTION} ${FOCUS}`}
                 >
-                  <p className="text-caption text-text-muted">{category}</p>
-                  <p className="mt-1.5 text-body-sm font-medium text-text-primary leading-snug line-clamp-2">{question}</p>
-                  <p className="mt-1 text-caption text-text-muted leading-relaxed">{description}</p>
+                  <ArrowRight className="absolute top-4 right-4 w-3.5 h-3.5 text-text-muted opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 transition-all duration-fast" strokeWidth={1.75} aria-hidden />
+                  {/* Fixed 2-line header height keeps every card's question
+                      aligned even when a capability label wraps. */}
+                  <span className="flex min-h-[2.5rem] items-start gap-2 pr-5">
+                    <Icon className="w-4 h-4 mt-0.5 shrink-0 text-text-muted" strokeWidth={1.75} />
+                    <span className="text-body-sm font-medium text-text-primary leading-snug">{capability}</span>
+                  </span>
+                  <span className="mt-1.5 text-body-sm text-text-secondary leading-relaxed">{question}</span>
                 </button>
               ))}
             </div>

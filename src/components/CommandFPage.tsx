@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus, Database, Upload, Presentation, Table2, MessageSquare, Wand2, Loader2,
+  Search, GitCompare, Quote,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
@@ -40,11 +41,16 @@ const mkMsg = (m: Omit<Message, '_key'>): Message => ({ ...m, _key: `m-${++_msgK
 const tagMsgs = (msgs: Message[]): Message[] => msgs.map((m) => m._key ? m : mkMsg(m));
 
 // Curated quick-start prompts (no backing data — intentionally authored).
-const PROMPT_ICP = 'Summarise our ICP and positioning for a new client pitch';
-const PROMPT_PROOF = 'What proof points and case studies can I cite for an agency lead?';
-const PROMPT_SIMILAR = 'Which engagements are most similar to a mid-market roll-up?';
+// The three landing cards teach the three retrieval jobs a consultant runs
+// against the firm's memory: find a precedent, compare engagements, pull a
+// specific figure. Deck-building is the separate plum pill (a mode switch),
+// so it is intentionally not one of these cards.
+const PROMPT_PRECEDENT = 'Have we advised on an insurance brokerage roll-up before?';
 const PROMPT_COMPARE = 'Compare our Acrisure and K2 Insurance work on buy-and-build strategy';
-const PROMPT_DECK_BUILD = 'Build a first-pass CDD deck for an insurance brokerage aggregator';
+const PROMPT_FIGURE = 'What synergy assumptions did we use in past roll-up models?';
+const PROMPT_PROOF = 'Have we delivered comparable results for an agency client before?';
+const PROMPT_POSITIONING = 'Compare how we positioned our two most recent client pitches';
+const PROMPT_ICP = 'What ICP and proof points did we lead with for a new client pitch?';
 // "Build a deck from these sources" already exists in SourceCard/SourceList
 // (per-message affordance) — this pre-fills the composer to invite a follow-on
 // comparison after an answer with sources lands.
@@ -551,14 +557,14 @@ export function CommandFPage({
   const buildDeckAction: QuickAction = { label: 'Build a deck', icon: Presentation, onClick: () => setSurface('deck') };
   const exampleCards: ExampleCard[] = (isActionist
     ? [
-        { category: 'Precedent search', question: PROMPT_SIMILAR, description: 'Search the corpus for comparable work and cited sources.' },
-        { category: 'Deck build', question: PROMPT_DECK_BUILD, description: 'Outline first, then slides in the house style.' },
-        { category: 'Engagement comparison', question: PROMPT_COMPARE, description: 'Side-by-side patterns across engagements.' },
+        { capability: 'Find a precedent', question: PROMPT_PRECEDENT, icon: Search },
+        { capability: 'Compare engagements', question: PROMPT_COMPARE, icon: GitCompare },
+        { capability: 'Pull a figure', question: PROMPT_FIGURE, icon: Quote },
       ]
     : [
-        { category: 'Precedent search', question: PROMPT_PROOF, description: 'Search the corpus for comparable work and proof points.' },
-        { category: 'Deck build', question: PROMPT_DECK_BUILD, description: 'Outline first, then slides in the house style.' },
-        { category: 'Positioning', question: PROMPT_ICP, description: "Summarise the workspace's ICP and positioning." },
+        { capability: 'Find a precedent', question: PROMPT_PROOF, icon: Search },
+        { capability: 'Compare pitches', question: PROMPT_POSITIONING, icon: GitCompare },
+        { capability: 'Pull positioning', question: PROMPT_ICP, icon: Quote },
       ]
   ).map((c) => ({ ...c, onClick: () => selectPrompt(c.question) }));
 
