@@ -124,7 +124,13 @@ export function mockSlidePreview(index: number, rev: number): string {
     "<rect x='40' y='214' width='480' height='14' rx='3' fill='#EFEBE4'/>" +
     `<text x='40' y='332' font-family='IBM Plex Mono, monospace' font-size='13' fill='#A49B8A'>S${index + 1} · rev ${rev}</text>` +
     '</svg>';
-  return `data:image/svg+xml;base64,${btoa(svg)}`;
+  // `btoa` only round-trips Latin-1 correctly; the caption's middle-dot (·,
+  // U+00B7) becomes a lone byte that is invalid UTF-8 once the browser decodes
+  // this as `image/svg+xml` XML — the SVG then fails to parse SILENTLY
+  // (naturalWidth 0, no console error, no network event). encodeURIComponent
+  // + unescape re-expresses the string as a byte sequence btoa can encode
+  // losslessly, so the decoded bytes are valid UTF-8 again.
+  return `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svg)))}`;
 }
 export const MOCK_SLIDE_IDS = ['s_ov01', 's_st02', 's_sc03', 's_rk04', 's_ns05'];
 const MOCK_DECK_PREVIEWS = MOCK_SLIDE_IDS.map((_, i) => mockSlidePreview(i, 1));
