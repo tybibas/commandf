@@ -99,6 +99,8 @@ const pairs = [
   ['LIGHT: accent-ink on bg-elevated',  P.orange700, P.paper0],
   // structure-ink (white) on structure fill (plum-700)
   ['LIGHT: structure-ink on structure (plum-700)', P.white, P.plum700],
+  // W5.4 — structure (plum-700) as TEXT on bg-secondary: sidebar wordmark at rest
+  ['LIGHT: structure (plum-700) on bg-secondary (wordmark)', P.plum700, P.paper100],
   // source (#2C5985) on paper — citation text
   ['LIGHT: source on bg-primary',  P.blue500, P.paper50],
   ['LIGHT: source on bg-elevated', P.blue500, P.paper0],
@@ -139,6 +141,8 @@ const pairs = [
   // error dark on bg
   ['DARK: error on bg-primary',   P.errorDark, P.dark900],
   ['DARK: error on bg-secondary', P.errorDark, P.dark800],
+  // W5.5 — error on bg-elevated (dark-600): account-menu sign-out hover text
+  ['DARK: error on bg-elevated (dark-600)', P.errorDark, P.dark600],
   // success (green500d #52A086 — dark-lifted) on dark bg
   ['DARK: success on bg-primary',  P.green500d, P.dark900],
   ['DARK: success on bg-secondary', P.green500d, P.dark800],

@@ -153,7 +153,7 @@ export default function Composer({
             <button
               type="button"
               onClick={onCancel}
-              className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-bg-tertiary text-text-muted hover:text-text-primary hover:bg-bg-tertiary/70 transition-colors duration-fast ease-out-expo active:scale-95 ${FOCUS}`}
+              className={`shrink-0 w-9 h-9 flex items-center justify-center rounded-full bg-bg-tertiary text-text-secondary border border-border hover:text-text-primary hover:bg-bg-tertiary/70 transition-colors duration-fast ease-out-expo active:scale-95 ${FOCUS}`}
               aria-label="Cancel response"
             >
               <X className="w-4 h-4" strokeWidth={2.25} />

@@ -90,17 +90,23 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
           <div
             ref={menuRef}
             role="menu"
-            className="absolute bottom-0 left-full ml-2 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
+            className="fixed bottom-3 left-16 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
           >
-            <div className="px-3 py-2 border-b border-border-light">
-              <p className="text-body font-medium text-text-primary truncate">{displayName}</p>
-              {userEmail && <p className="text-micro text-text-muted truncate mt-0.5">{userEmail}</p>}
+            <div className="px-3 py-2.5 hairline-b flex items-center gap-2.5">
+              <span aria-hidden className="shrink-0 w-8 h-8 rounded-full bg-structure text-structure-ink flex items-center justify-center text-body-sm font-semibold leading-none select-none">
+                {initial}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-body-sm font-medium text-text-primary">{displayName}</span>
+                {userEmail && <span className="block truncate font-mono text-micro text-text-muted mt-0.5">{userEmail}</span>}
+              </span>
             </div>
+            <div className="hairline-b" />
             <button
               type="button"
               role="menuitem"
               onClick={() => { setOpen(false); onSignOut(); }}
-              className={`w-full flex items-center gap-2.5 px-3 py-2 text-body text-text-secondary hover:text-error hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-body-sm text-text-secondary hover:text-error hover:bg-error/[0.08] transition-colors ${MOTION} ${FOCUS}`}
             >
               <LogOut className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
               Sign out
@@ -142,11 +148,21 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
           role="menu"
           className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
         >
+          <div className="px-3 py-2.5 hairline-b flex items-center gap-2.5">
+            <span aria-hidden className="shrink-0 w-8 h-8 rounded-full bg-structure text-structure-ink flex items-center justify-center text-body-sm font-semibold leading-none select-none">
+              {initial}
+            </span>
+            <span className="min-w-0">
+              <span className="block truncate text-body-sm font-medium text-text-primary">{displayName}</span>
+              {userEmail && <span className="block truncate font-mono text-micro text-text-muted mt-0.5">{userEmail}</span>}
+            </span>
+          </div>
+          <div className="hairline-b" />
           <button
             type="button"
             role="menuitem"
             onClick={() => { setOpen(false); onSignOut(); }}
-            className={`w-full flex items-center gap-2.5 px-3 py-2 text-body text-text-secondary hover:text-error hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+            className={`w-full flex items-center gap-2.5 px-3 py-2 text-body-sm text-text-secondary hover:text-error hover:bg-error/[0.08] transition-colors ${MOTION} ${FOCUS}`}
           >
             <LogOut className="w-3.5 h-3.5 shrink-0" strokeWidth={1.75} aria-hidden />
             Sign out
@@ -198,7 +214,7 @@ export default function Sidebar({
       {/* ── Header: wordmark + collapse toggle ─────────────────────────── */}
       <div className={`flex items-center h-14 shrink-0 ${collapsed ? 'justify-center px-0' : 'justify-between px-4'}`}>
         {!collapsed && (
-          <span className="font-display font-normal text-xl text-text-primary select-none">
+          <span className="font-display font-normal text-xl wordmark-plum select-none">
             Command&nbsp;F
           </span>
         )}

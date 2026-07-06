@@ -15,10 +15,23 @@ function AssistantMessage({
   m,
   onReuse,
   onBuildDeck,
-}: { m: Message; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
+  isStreaming,
+}: { m: Message; onReuse?: (prompt: string) => void; onBuildDeck?: () => void; isStreaming?: boolean }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [highlightN, setHighlightN] = useState<number | null>(null);
   const clearTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [copied, setCopied] = useState(false);
+  const copyTimer = useRef<ReturnType<typeof setTimeout>>();
+
+  const copyResponse = useCallback(() => {
+    navigator.clipboard?.writeText(m.content).then(() => {
+      setCopied(true);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(false), 1400);
+    }).catch(() => {});
+  }, [m.content]);
+
+  useEffect(() => () => { if (copyTimer.current) clearTimeout(copyTimer.current); }, []);
 
   // Which citation numbers actually resolve to a grouped source card.
   const citable = useMemo(() => {
@@ -42,7 +55,7 @@ function AssistantMessage({
   const hasSources = Boolean(m.sources && m.sources.length > 0);
 
   return (
-    <div ref={rootRef} className="animate-slide-up">
+    <div ref={rootRef} className="group/turn animate-slide-up">
       {m.error ? (
         <span className="flex items-start gap-2 text-body leading-relaxed text-text-primary">
           <AlertCircle className="w-4 h-4 text-error shrink-0 mt-1" aria-hidden />
@@ -50,12 +63,26 @@ function AssistantMessage({
         </span>
       ) : (
         <>
-          {/* Attribution marker — quiet left-aligned label mirrors the right-aligned user bubble */}
-          <div className="flex items-center gap-1.5 mb-2 text-caption text-text-muted">
-            <Sparkles className="w-3 h-3" strokeWidth={1.75} aria-hidden />
-            <span>Command F</span>
+          {/* Attribution marker — quiet left-aligned label mirrors the right-aligned user bubble.
+              The copy affordance surfaces only on hover of this turn. */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 text-caption text-text-muted">
+              <Sparkles className="w-3 h-3 text-accent-ink" strokeWidth={1.75} aria-hidden />
+              <span>Command F</span>
+            </div>
+            {!isStreaming && (
+              <button
+                type="button"
+                onClick={copyResponse}
+                aria-label={copied ? 'Copied' : 'Copy response'}
+                title="Copy response"
+                className="p-1 rounded-control text-text-muted opacity-0 group-hover/turn:opacity-100 focus-visible:opacity-100 hover:text-text-primary hover:bg-bg-tertiary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+              >
+                {copied ? <Check className="w-3.5 h-3.5" strokeWidth={2} aria-hidden /> : <Copy className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />}
+              </button>
+            )}
           </div>
-          <div className="max-w-[72ch]">
+          <div className={`max-w-[72ch] ${isStreaming ? "[&_p:last-child]:after:content-['▍'] [&_p:last-child]:after:inline-block [&_p:last-child]:after:ml-0.5 [&_p:last-child]:after:text-accent [&_p:last-child]:after:animate-pulse" : ''}`}>
             <CommandFMarkdown
               content={m.content}
               onCiteClick={hasSources ? onCiteClick : undefined}
@@ -96,7 +123,7 @@ function UserMessage({ m, onEdit }: { m: Message; onEdit?: (prompt: string) => v
 
   return (
     <div className="group flex flex-col items-end gap-1 animate-fade-in">
-      <div className="relative max-w-[80%] rounded-surface px-4 py-2.5 text-base leading-relaxed bg-bg-secondary text-text-primary border border-border-light">
+      <div className="relative max-w-[60ch] rounded-surface rounded-br-control px-4 py-2.5 text-body leading-relaxed bg-structure text-structure-ink">
         <div className={`whitespace-pre-wrap break-words ${collapsed ? 'max-h-[8.5rem] overflow-hidden' : ''}`}>
           {m.content}
         </div>
@@ -104,9 +131,9 @@ function UserMessage({ m, onEdit }: { m: Message; onEdit?: (prompt: string) => v
           <button
             type="button"
             onClick={() => setExpanded(true)}
-            className="absolute inset-x-0 bottom-0 flex items-end justify-center pb-2 pt-12 rounded-b-surface bg-gradient-to-t from-bg-secondary via-bg-secondary to-transparent"
+            className="absolute inset-x-0 bottom-0 flex items-end justify-center pb-2 pt-12 rounded-b-surface rounded-br-control bg-gradient-to-t from-structure via-structure to-transparent"
           >
-            <span className="text-caption font-medium text-text-secondary hover:text-text-primary bg-bg-secondary px-2 py-0.5 rounded-full border border-border-light shadow-sm transition-colors">Show more</span>
+            <span className="text-caption font-medium text-text-secondary hover:text-text-primary bg-bg-elevated px-2 py-0.5 rounded-full border border-border-light shadow-sm transition-colors">Show more</span>
           </button>
         )}
       </div>
@@ -165,25 +192,43 @@ export default function Conversation({ messages, sending, steps, streamDraft, on
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 scrollbar-thin">
-      <div className="max-w-prose-tight mx-auto space-y-8">
-        {messages.map((m, i) => (
-          <MessageRow key={m._key ?? `${m.role}-${i}`} m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
-        ))}
-        {sending && (
-          streamDraft ? (
-            // Synthesis turn is streaming — show draft bubble; ThinkingIndicator
-            // is hidden so the draft replaces it naturally. The draft is replaced
-            // by the final citation-normalized text when the 'done' event arrives.
-            <AssistantMessage
-              m={{ role: 'assistant', content: streamDraft, _key: 'stream-draft' }}
-              onReuse={onReuse}
-              onBuildDeck={onBuildDeck}
-            />
-          ) : (
-            <div className="flex justify-start">
-              <ThinkingIndicator steps={steps} />
+      <div className="max-w-prose-tight mx-auto">
+        {messages.map((m, i) => {
+          // Rhythm: the reply that answers a question sits close to it (tight gap);
+          // a new question opens a new exchange (loose gap) — the transcript reads
+          // in exchanges, not as one undifferentiated stream.
+          const prev = messages[i - 1];
+          const gapClass = i === 0
+            ? ''
+            : prev.role === 'user' && m.role === 'assistant'
+              ? 'mt-3'
+              : prev.role === 'assistant' && m.role === 'user'
+                ? 'mt-10'
+                : 'mt-6';
+          return (
+            <div key={m._key ?? `${m.role}-${i}`} className={gapClass}>
+              <MessageRow m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
             </div>
-          )
+          );
+        })}
+        {sending && (
+          <div className={messages.length > 0 ? 'mt-3' : ''}>
+            {streamDraft ? (
+              // Synthesis turn is streaming — show draft bubble; ThinkingIndicator
+              // is hidden so the draft replaces it naturally. The draft is replaced
+              // by the final citation-normalized text when the 'done' event arrives.
+              <AssistantMessage
+                m={{ role: 'assistant', content: streamDraft, _key: 'stream-draft' }}
+                onReuse={onReuse}
+                onBuildDeck={onBuildDeck}
+                isStreaming
+              />
+            ) : (
+              <div className="flex justify-start">
+                <ThinkingIndicator steps={steps} />
+              </div>
+            )}
+          </div>
         )}
       </div>
     </div>

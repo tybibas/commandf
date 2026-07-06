@@ -96,7 +96,9 @@ export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group:
           {group.n ?? '·'}
         </span>
 
-        <FileText className="w-3.5 h-3.5 text-text-muted shrink-0 group-hover:text-text-secondary transition-colors" strokeWidth={1.75} aria-hidden />
+        <span className="shrink-0 inline-flex items-center justify-center w-6 h-6 rounded-control bg-source-soft">
+          <FileText className="w-3.5 h-3.5 text-source" strokeWidth={1.75} aria-hidden />
+        </span>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -123,7 +125,7 @@ export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group:
               type="button"
               onClick={() => setExpanded((v) => !v)}
               aria-expanded={expanded}
-              className={`mt-1.5 inline-flex items-center gap-1 text-micro text-text-muted hover:text-text-secondary rounded-control transition-colors ${MOTION} ${FOCUS}`}
+              className={`mt-1.5 inline-flex items-center gap-1 font-mono text-micro text-text-muted hover:text-text-secondary rounded-control transition-colors ${MOTION} ${FOCUS}`}
             >
               <ChevronRight className={`w-3 h-3 transition-transform ${MOTION} ${expanded ? 'rotate-90' : ''}`} strokeWidth={2} aria-hidden />
               {extra + 1} passages
