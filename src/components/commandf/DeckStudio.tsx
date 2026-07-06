@@ -191,9 +191,11 @@ export default function DeckStudio({
       if (result.slide_order) setSlideOrder(result.slide_order);
       setBatches((prev) => prev.map((b) => {
         if (b.batchId !== batchId) return b;
+        // Per-op undo (contract §3.3.1): stamp only the op `undone`; the BATCH flag
+        // stays false — a single reverted op is NOT the whole batch reverted (that
+        // is undoBatch). So the group keeps its "undo group" affordance.
         const ops = b.ops.map((o) => (o.op.op_id === opId ? { ...o, undone: true } : o));
-        const allDone = ops.every((o) => o.undone || o.status === 'failed');
-        return { ...b, ops, undone: allDone, depNoticeOpId: undefined };
+        return { ...b, ops, depNoticeOpId: undefined };
       }));
     } catch {
       // Dependent op the backend can't isolate → steer to a whole-group undo.
