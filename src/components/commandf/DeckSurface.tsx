@@ -1,7 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import {
   Presentation, Sparkles, ArrowLeft, ArrowUpRight, Database, Layers, FileText, Info,
 } from 'lucide-react';
+
+const reducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 import {
   generateDeck, generateDeckStatus, generateDeckOutline, editDeckSlide,
   DECK_ENUM_TYPES, EndpointPendingError, type DeckOutline as Outline,
@@ -19,22 +22,59 @@ const CHIP_OFF = 'border border-border-light text-text-secondary hover:text-text
 const CHIP_ON = 'bg-structure text-structure-ink';
 const NUM_INPUT = `w-16 rounded-control border border-border bg-bg-secondary px-2 py-1 text-caption font-mono text-text-primary text-center outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS}`;
 
-// Deliverable types + their natural brief. Three (proposal, engagement_recap,
+// Deliverable types + their natural briefs. Three (proposal, engagement_recap,
 // pov_memo) are the generator's validated enum → sent as `deliverable_type`.
 // The rest are grounded in Actionist's indexed work but NOT enum values, so their
 // intent is folded into the request prose (`intent`) — the planner is LLM-driven
-// and adapts. Examples are archetypal (no named clients) → universal templates.
-type DeckType = { id: string; label: string; example: string; intent?: string };
+// and adapts. Each type carries a few archetypal briefs (no named clients) that
+// teach what it can produce; the left panel rotates through them per selected type.
+type DeckType = { id: string; label: string; examples: string[]; intent?: string };
 const TYPES: DeckType[] = [
-  { id: '', label: 'Auto-detect', example: 'A 90-day operating-model review for a mid-market insurer CFO. Lead with the value-creation thesis, then the workplan and the team.' },
-  { id: 'proposal', label: 'Proposal', example: 'A proposal for a 10-week commercial diligence on a specialty-insurance target: our approach, the workplan, the team, and fees.' },
-  { id: 'engagement_recap', label: 'Engagement recap', example: 'A closing readout for the engagement: what we set out to do, what changed along the way, the results, and the handoff plan.' },
-  { id: 'pov_memo', label: 'POV memo', example: 'A point-of-view memo on where the specialty-insurance market is heading, and what it means for a mid-market carrier over the next 24 months.' },
-  { id: 'board_update', label: 'Board / SteerCo', intent: 'a board / SteerCo update deck', example: 'A Q3 SteerCo update: progress against the value-creation plan, the two decisions we need from the board, and the risks we are tracking.' },
-  { id: 'diagnostic', label: 'Diagnostic', intent: 'a diagnostic deck', example: 'An operating-model diagnostic for a mid-market insurer: where margin leaks today, the root causes, and the three highest-impact fixes.' },
-  { id: 'strategy', label: 'Strategy', intent: 'a strategy deck', example: 'Strategic options for a distribution business facing channel shift: three paths, the trade-offs of each, and our recommendation.' },
-  { id: 'market_landscape', label: 'Market landscape', intent: 'a market-landscape deck', example: 'A market landscape for the E&S insurance segment: size and growth, the competitive map, and where the white space is for a new entrant.' },
-  { id: 'due_diligence', label: 'Due diligence', intent: 'a commercial due-diligence readout', example: 'A commercial due-diligence readout on a specialty-insurance target: market attractiveness, competitive position, and the key risks to the thesis.' },
+  { id: '', label: 'Auto-detect', examples: [
+    'A 90-day operating-model review for a mid-market insurer CFO. Lead with the value-creation thesis, then the workplan and the team.',
+    'A working session for the client ops leads on why cycle times slipped last quarter, and the two changes we would make first.',
+    'A short update for a PE deal team on where our work stands and what still worries us.',
+  ] },
+  { id: 'proposal', label: 'Proposal', examples: [
+    'A proposal for a 10-week commercial diligence on a specialty-insurance target: our approach, the workplan, the team, and fees.',
+    'A pitch to run a cost-to-serve teardown for a distribution business, framed around the margin we think is recoverable.',
+    'A proposal to stand up a PMO for a post-merger integration, with the first 100 days mapped out.',
+  ] },
+  { id: 'engagement_recap', label: 'Engagement recap', examples: [
+    'A closing readout for the engagement: what we set out to do, what changed along the way, the results, and the handoff plan.',
+    'A recap for the sponsor showing the three decisions that moved the number, and what we would watch over the next two quarters.',
+    'A wrap-up for the client team that credits their people, names what worked, and is honest about what we would do differently.',
+  ] },
+  { id: 'pov_memo', label: 'POV memo', examples: [
+    'A point-of-view memo on where the specialty-insurance market is heading, and what it means for a mid-market carrier over the next 24 months.',
+    'A short memo arguing the client is under-pricing risk in one segment, with the evidence and the fix.',
+    'A partner take on whether to build or buy the analytics capability, and why we lean one way.',
+  ] },
+  { id: 'board_update', label: 'Board / SteerCo', intent: 'a board / SteerCo update deck', examples: [
+    'A Q3 SteerCo update: progress against the value-creation plan, the two decisions we need from the board, and the risks we are tracking.',
+    'A board update that opens with the one number that matters this quarter, then the story behind it.',
+    'A SteerCo pack that flags a slipped milestone early, with the recovery plan and what it costs.',
+  ] },
+  { id: 'diagnostic', label: 'Diagnostic', intent: 'a diagnostic deck', examples: [
+    'An operating-model diagnostic for a mid-market insurer: where margin leaks today, the root causes, and the three highest-impact fixes.',
+    'A diagnostic of why win rates fell in one region, tracing it back to pricing and rep coverage.',
+    'A cost diagnostic that separates the spend we can cut this year from the spend that needs a longer fix.',
+  ] },
+  { id: 'strategy', label: 'Strategy', intent: 'a strategy deck', examples: [
+    'Strategic options for a distribution business facing channel shift: three paths, the trade-offs of each, and our recommendation.',
+    'A growth strategy for a carrier that has run out of room in its home market, ranked by how fast each move pays back.',
+    'A five-year plan that starts from where the client actually wins today, not a blank sheet.',
+  ] },
+  { id: 'market_landscape', label: 'Market landscape', intent: 'a market-landscape deck', examples: [
+    'A market landscape for the E&S insurance segment: size and growth, the competitive map, and where the white space is for a new entrant.',
+    'A landscape of the players in embedded insurance, sorted by who is actually taking share.',
+    'A scan of an adjacent market the client is eyeing, with an honest read on whether it is worth entering.',
+  ] },
+  { id: 'due_diligence', label: 'Due diligence', intent: 'a commercial due-diligence readout', examples: [
+    'A commercial due-diligence readout on a specialty-insurance target: market attractiveness, competitive position, and the key risks to the thesis.',
+    'A diligence readout that stress-tests the seller growth story against what customers told us.',
+    'A red-flag summary for a deal team: the three things that could break the thesis, and how confident we are in each.',
+  ] },
 ];
 
 const DECK_PHASES = ['Retrieving evidence…', 'Drafting the storyline…', 'Laying out slides…', 'Assembling the .pptx…'];
@@ -73,6 +113,8 @@ export default function DeckSurface({
   // `sectionSize`, one at a time, with a "build next N slides" continue action.
   const [deckMode, setDeckMode] = useState<'full' | 'sections'>('full');
   const [sectionSize, setSectionSize] = useState(5);
+  // Which of the selected type's archetypal briefs the teaching panel is showing.
+  const [exampleIdx, setExampleIdx] = useState(0);
 
   const [outline, setOutline] = useState<Outline | null>(null);
   const [outlinePhase, setOutlinePhase] = useState<OutlinePhase>('idle');
@@ -99,6 +141,27 @@ export default function DeckSurface({
     ? (Number(lenCustom) > 0 ? Number(lenCustom) : undefined)
     : (length ? Number(length) : undefined);
   const canGo = !!brief.trim();
+
+  // Teaching panel: restart at the first brief when the deck type changes, then
+  // gently cycle through that type's briefs while the field is empty (mirrors the
+  // main composer's rotating placeholder). Stops the moment there's a brief so it
+  // never distracts once the user is writing; skipped under reduced-motion.
+  useEffect(() => { setExampleIdx(0); }, [type]);
+  const rotateExamples = !brief.trim() && activeType.examples.length > 1 && !reducedMotion();
+  useEffect(() => {
+    if (!rotateExamples) return;
+    const id = setInterval(() => setExampleIdx((i) => (i + 1) % activeType.examples.length), 5200);
+    return () => clearInterval(id);
+  }, [rotateExamples, activeType]);
+
+  const useExample = (text: string) => {
+    setBrief(text);
+    requestAnimationFrame(() => {
+      const el = document.getElementById('deck-brief') as HTMLTextAreaElement | null;
+      el?.focus();
+      el?.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
 
   // Non-enum types steer the LLM planner through prose; enum types go structured.
   const buildRequest = () => {
@@ -228,7 +291,10 @@ export default function DeckSurface({
 
   // ── Intent ──
   return (
-    <Shell onBack={onBack}>
+    <Shell onBack={onBack} intel={
+      <ExamplePrompts typeLabel={activeType.label === 'Auto-detect' ? 'deck' : activeType.label}
+        examples={activeType.examples} idx={exampleIdx} onPick={setExampleIdx} onUse={useExample} />
+    }>
       <div className="flex flex-col px-6 pt-3 pb-6 md:px-7 md:pb-7">
         {/* Deliverable type */}
         <p className="text-caption text-text-muted font-medium mb-2.5">Deliverable type</p>
@@ -297,10 +363,6 @@ export default function DeckSurface({
         <div className="mt-5">
           <div className="flex items-center justify-between mb-1.5">
             <label htmlFor="deck-brief" className="text-caption text-text-muted font-medium">Brief</label>
-            <button type="button" onClick={() => setBrief(activeType.example)}
-              className={`text-caption text-accent-ink hover:text-accent transition-colors ${FOCUS} rounded-control`}>
-              Use an example
-            </button>
           </div>
           <p className="text-caption text-text-muted mb-2 leading-relaxed">Name the audience, the angle, and which past work to draw on.</p>
           <textarea id="deck-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} placeholder="Build a [deck type] for [client] covering [topic and key questions]…"
@@ -377,7 +439,7 @@ export default function DeckSurface({
 }
 
 // Shared two-panel shell (back button + left rail identity + right-rail children).
-function Shell({ onBack, children }: { onBack: () => void; children: ReactNode }) {
+function Shell({ onBack, children, intel }: { onBack: () => void; children: ReactNode; intel?: ReactNode }) {
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin">
       <div className="min-h-full flex items-center justify-center px-6 py-10">
@@ -397,6 +459,7 @@ function Shell({ onBack, children }: { onBack: () => void; children: ReactNode }
               <p className="mt-2 text-body text-text-secondary leading-relaxed">
                 Turn a rough brief into a partner-grade deck, grounded in your firm&#39;s past work.
               </p>
+              {intel}
               <ul className="mt-auto pt-8 space-y-3">
                 {CAPABILITIES.map(({ icon: Icon, text }) => (
                   <li key={text} className="flex items-center gap-2.5 text-caption text-text-secondary">
@@ -410,6 +473,56 @@ function Shell({ onBack, children }: { onBack: () => void; children: ReactNode }
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/** Tailored teaching panel in the left column: a rotating, clickable example
+ *  brief for the selected deck type. Click fills the brief on the right; the dots
+ *  page through the type's angles and pin the selection. Teaches, per type, what
+ *  a good brief looks like — the deck-builder parallel to the composer's rotating
+ *  placeholder. Decorative rotation stops once the field has content. */
+function ExamplePrompts({ typeLabel, examples, idx, onPick, onUse }: {
+  typeLabel: string;
+  examples: string[];
+  idx: number;
+  onPick: (i: number) => void;
+  onUse: (text: string) => void;
+}) {
+  const safeIdx = Math.min(idx, examples.length - 1);
+  const current = examples[safeIdx];
+  return (
+    <div className="mt-7">
+      <p className="text-caption text-text-muted font-medium mb-2">Try a {typeLabel.toLowerCase()} brief</p>
+      <button
+        type="button"
+        onClick={() => onUse(current)}
+        aria-label="Use this example brief"
+        className={`group block w-full text-left rounded-surface border border-border-light bg-bg-secondary px-3.5 py-3 hover:border-border-hover hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+      >
+        <span key={safeIdx} className="animate-placeholder-fade block text-body-sm text-text-secondary leading-relaxed">
+          {current}
+        </span>
+        <span className="mt-2 inline-flex items-center gap-1 text-caption text-text-muted group-hover:text-text-primary transition-colors">
+          <Sparkles className="w-3 h-3" strokeWidth={1.75} aria-hidden />
+          Use this brief
+        </span>
+      </button>
+      {examples.length > 1 && (
+        <div className="mt-2.5 flex items-center gap-1.5" role="tablist" aria-label="Example briefs">
+          {examples.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              role="tab"
+              aria-selected={i === safeIdx}
+              aria-label={`Example ${i + 1}`}
+              onClick={() => onPick(i)}
+              className={`h-1.5 rounded-full transition-all ${MOTION} ${FOCUS} ${i === safeIdx ? 'w-4 bg-text-muted' : 'w-1.5 bg-border hover:bg-border-hover'}`}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

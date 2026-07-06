@@ -5,6 +5,7 @@ import { CommandFPage } from '../components/CommandFPage';
 import { CommandFLogin } from '../standalone/CommandFLogin';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
 import DeckStudio from '../components/commandf/DeckStudio';
+import DeckSurface from '../components/commandf/DeckSurface';
 import SpendPanel from '../components/commandf/SpendPanel';
 import { MOCK_DECK_STATUS, MOCK_OUTLINE } from './fixtures';
 
@@ -33,6 +34,18 @@ export function HarnessRoot({ view }: { view: string }) {
               approvedPlan={MOCK_OUTLINE.plan}
               seed={MOCK_DECK_STATUS}
             />
+          </div>
+        </ActionistStrategyProvider>
+      </AuthProvider>
+    );
+  }
+  // Deck-build intent form — for $0 iteration on the tailored teaching panel.
+  if (view === 'deck') {
+    return (
+      <AuthProvider>
+        <ActionistStrategyProvider>
+          <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
+            <DeckSurface onBack={() => console.info('[harness] back')} />
           </div>
         </ActionistStrategyProvider>
       </AuthProvider>
