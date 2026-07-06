@@ -139,8 +139,10 @@ export default function DeckOutline({
             ) : (
             <div className="space-y-2">
             {slides.map((s, i) => (
-              <div key={s._stableId} id={`sl-${i}`} className={`group rounded-surface border bg-bg-secondary/40 px-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-structure' : 'border-border-light'}`}>
-                <span className="mt-0.5 shrink-0 font-mono tabular-nums text-caption text-text-muted tabular-nums w-5 text-right">{i + 1}</span>
+              <div key={s._stableId} id={`sl-${i}`} className={`group rounded-surface border border-l-2 bg-bg-secondary/40 pl-3 pr-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-border-light border-l-structure' : 'border-border-light'}`}>
+                <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-7 h-6 rounded-control bg-bg-tertiary font-mono text-micro text-text-secondary" aria-hidden>
+                  S{i + 1}
+                </span>
                 <div className="flex-1 min-w-0">
                   <input value={s.lede} onChange={(e) => retitle(i, e.target.value)} disabled={building} aria-label={`Slide ${i + 1} title`}
                     className={`w-full bg-transparent text-body text-text-primary leading-snug outline-none border-b border-transparent focus:border-border-hover transition-colors ${MOTION} disabled:opacity-60`} />

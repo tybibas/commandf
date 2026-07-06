@@ -227,6 +227,26 @@ Primary CTAs may include an inline `→` (site convention). Max one primary per 
   canvas fades/slides in +16px. Reduced-motion: instant swap.
 - Whiteboard intake: dashed border-strong drop zone, radius-card; storyboard approval reuses
   `DeckOutline.tsx` verbatim (§C Phase 4).
+- Agentic changelog (`generationUI.tsx` `RunningPanel`, W6.4) — this IS the morph-studio narration
+  component: a collapsible group header (label + "N steps" + chevron, collapsed by default past 6
+  steps) with each completed phase as a check row (`text-verified`) and the current phase spinning
+  in `text-structure`; upcoming phases sit quiet with a dot marker. Only real backend phase labels
+  ever populate the list — per `FRONTEND_WIRING_HANDOFF.md` the deck job is terminal-only (no
+  per-slide progress stream), so no numeric "slide N of M" counter is fabricated. When the backend
+  sends a live `progress` string it takes over as the sole authoritative line (no step history to
+  show, so no checklist is drawn over it) — the canned phase pool is only the fallback narration
+  while the backend is silent.
+
+### Deck outline anatomy (`DeckOutline.tsx`, W6.5)
+- Each slide row gets a number chip: `w-7 h-6 rounded-control bg-bg-tertiary font-mono text-micro
+  text-text-secondary` reading "S1", "S2"... (mono, matches the deck's own slide-numbering
+  convention).
+- The plan has no section/group model (`governing_thought` + flat `slides[]` — no groups to
+  header), so Wave 6 applied the fallback: each row carries its own 2px left rail
+  (`border-l-2 border-l-border-light`, i.e. a broken hairline down the list) that switches to
+  `border-l-structure` on the focused/just-edited item (consistent with the palette selection
+  pattern used elsewhere). If a sectioned plan shape ships later, add a "Section N · M slides"
+  header row (`text-caption text-text-muted` + `text-lg font-display` title) above each group.
 
 ### Command palette / menus
 - bg-elevated, radius-surface, shadow-float (allowed: floating).
@@ -237,9 +257,37 @@ Primary CTAs may include an inline `→` (site convention). Max one primary per 
 - Actionist mark on the hero: inlined SVG (`currentColor`) in `text-accent-ink` — the one orange
   accent for this view, distinct from the plum wordmark/structure color used everywhere else at
   rest. (Not the sidebar's neutral `<img>` wordmark — that stays quiet.)
-- Quick actions: "Build a deck" is the single primary — `bg-structure text-structure-ink` pill,
-  `font-medium`, icon in `text-structure-ink`. The other chips stay quiet (`border-border-light
-  bg-bg-primary text-text-secondary`, icon `text-accent-ink`). One primary per view (house rule).
+- Primary action: "Build a deck" is the single primary — `bg-structure text-structure-ink` pill,
+  `font-medium`, icon in `text-structure-ink`, centered above the example cards. One primary per
+  view (house rule). Wave 6 dropped the old quiet-chip row (Find a precedent / Compare
+  engagements) in favor of the example-card grid below — a chip and a card both prefill the
+  composer, so keeping both was redundant; the pill survives because it is a different kind of
+  action (it launches the deck surface, not a text prefill).
+
+### Example card (new — `Landing.tsx`, W6.1)
+Distilled from Listen Labs's starter-question gallery (`research_competitor_corpus.md` §T7),
+redesigned onto Command F tokens instead of copied verbatim. A 3-up grid under the composer,
+each card a real, on-domain question (never fabricated) that teaches what the firm's memory can
+answer.
+- Card: `bg-bg-elevated border border-border-light rounded-surface p-4` text-left;
+  `hover:border-border-hover hover:-translate-y-px transition-all duration-fast ease-out-expo`;
+  full-card `focus-visible` ring (the whole card is the button).
+- Content stack: category caption (`text-caption text-text-muted`, sentence case, e.g.
+  "Precedent search") → question (`text-body-sm font-medium text-text-primary`, `line-clamp-2`) →
+  one-line description (`text-caption text-text-muted`).
+- Click pre-fills the composer with the question text and focuses it (`selectPrompt` — the same
+  mechanism the old quick-action chips used).
+
+### Suggestion chip (new — `CommandFPage.tsx` chat surface, W6.3)
+Deterministic follow-up affordance shown above the composer once the LATEST assistant turn has
+actually finished (not mid-stream) and carries real sources — never fabricated, never shown while
+streaming. Hides the instant the user types or sends.
+- `rounded-pill border border-border-light bg-bg-elevated text-body-sm px-3.5 py-1.5
+  text-text-secondary`; `hover:border-border-hover hover:text-text-primary`; row wrapped in
+  `animate-fade-in`.
+- "Build a deck from these sources" already lives in `SourceCard.tsx`'s `SourceList` (per-message,
+  not per-turn) — Wave 6 did not duplicate it. Only "Compare these engagements side by side" is a
+  new top-level chip.
 
 ### States (every surface ships all four)
 - Loading: skeleton shimmer matching final layout on paper-200 (no lone spinners for

@@ -300,7 +300,7 @@ export default function DeckSurface({
             </button>
           </div>
           <p className="text-caption text-text-muted mb-2 leading-relaxed">Name the audience, the angle, and which past work to draw on.</p>
-          <textarea id="deck-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} placeholder={activeType.example}
+          <textarea id="deck-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} placeholder="Build a [deck type] for [client] covering [topic and key questions]…"
             className={`w-full resize-y max-h-[40vh] rounded-surface border border-border bg-bg-secondary px-3.5 py-3 text-body-sm text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
           {/* Same voice + optimize controls as the main composer (reused). */}
           <div className="mt-2 flex justify-end">

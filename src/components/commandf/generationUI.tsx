@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers, Wand2, X } from 'lucide-react';
+import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers, Wand2, X, ChevronDown } from 'lucide-react';
 import { authedDownloadUrl, type JobStatus } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
@@ -60,22 +60,29 @@ export function PendingNote({ endpoint }: { endpoint: string }) {
 }
 
 /**
- * Working trace — an advancing "Completed N steps" affordance distilled from
- * Perplexity / Harvey. Steps below the active one read as done (check), the
- * current one spins, upcoming ones sit quiet. The final phase holds while the
- * job keeps polling — honest: it never claims completion the backend hasn't sent.
+ * Working trace — an agentic changelog distilled from Listen Labs's build
+ * narration (research_competitor_corpus.md §Section 4A / D1), but designed:
+ * a collapsible group header ("Building your deck" + step count) with each
+ * completed step as a check row, the current step spinning, upcoming ones
+ * quiet. The final phase holds while the job keeps polling — honest: it
+ * never claims completion the backend hasn't sent.
  *
  * When the backend sends a live `progress` string, it becomes the authoritative
  * status line — the canned `phases` timer is only the fallback while the backend
- * is silent. `progress` is optional and additive, so existing callers (Survey)
- * keep working unchanged.
+ * is silent, and only real backend phase labels ever populate it (no per-slide
+ * counter is fabricated; the backend's deck job is terminal-only). `progress`
+ * is optional and additive, so existing callers (Survey) keep working unchanged.
  */
 export function RunningPanel({
   label, phases, progress,
 }: { label: string; phases?: string[]; progress?: string }) {
   const pool = phases && phases.length > 0 ? phases : [label];
   const [active, setActive] = useState(0);
+  // Collapsed by default once the trace is long (>6 steps); short pools (the
+  // common case here) start open so the narration reads immediately.
+  const [collapsed, setCollapsed] = useState(pool.length > 6);
   const live = progress?.trim();
+  const headerLabel = label.replace(/[…\s]+$/, '').trim();
 
   useEffect(() => {
     // When the backend is driving the status line we stop the local timer and
@@ -91,39 +98,51 @@ export function RunningPanel({
   }, [pool.length, live]);
 
   const done = Math.min(active, pool.length - 1);
+  const collapsible = !live && pool.length > 1;
 
   return (
     <div className="mt-5 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3.5 animate-slide-up">
-      <div className="flex items-center gap-2 mb-2.5">
+      <button
+        type="button"
+        onClick={() => collapsible && setCollapsed((v) => !v)}
+        aria-expanded={collapsible ? !collapsed : undefined}
+        className={`w-full flex items-center gap-2 ${collapsible ? '' : 'pointer-events-none'} ${FOCUS} rounded-control`}
+      >
         <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted shrink-0 motion-reduce:animate-none" aria-hidden />
-        <p className="text-caption text-text-muted font-medium" aria-live="polite">
-          {live ? 'Working' : `Working · step ${done + 1} of ${pool.length}`}
+        <p className="flex-1 min-w-0 truncate text-left text-caption text-text-muted font-medium" aria-live="polite">
+          {live ? headerLabel : `${headerLabel} · ${pool.length} step${pool.length === 1 ? '' : 's'}`}
         </p>
-      </div>
+        {collapsible && (
+          <ChevronDown
+            className={`w-3.5 h-3.5 text-text-muted shrink-0 transition-transform duration-fast ease-out-expo ${collapsed ? '-rotate-90' : ''}`}
+            aria-hidden
+          />
+        )}
+      </button>
 
       {live ? (
         // Live backend line — first-class, calm, honest. No fake step counter.
-        <p className="text-caption text-text-primary leading-relaxed" aria-live="polite">
+        <p className="mt-2.5 text-caption text-text-primary leading-relaxed" aria-live="polite">
           {live}
         </p>
+      ) : collapsed ? (
+        // Collapsed trace — surface only the current step so the header stays
+        // scannable; expand to see the full changelog.
+        <p className="mt-2.5 flex items-center gap-2.5 text-caption text-text-primary">
+          <Loader2 className="w-3.5 h-3.5 shrink-0 animate-spin text-structure motion-reduce:animate-none" aria-hidden />
+          {pool[done]}
+        </p>
       ) : (
-        <ol className="space-y-2">
+        <ol className="mt-2.5 space-y-2">
           {pool.map((step, i) => {
             const isDone = i < active;
             const isActive = i === active;
             return (
               <li key={i} className="flex items-center gap-2.5">
-                <span
-                  className={[
-                    'inline-flex items-center justify-center w-4 h-4 shrink-0 rounded-full',
-                    isDone ? 'bg-text-primary text-bg-primary'
-                      : isActive ? 'border border-border-hover'
-                      : 'border border-border-light',
-                  ].join(' ')}
-                  aria-hidden
-                >
-                  {isDone && <Check className="w-2.5 h-2.5" strokeWidth={3} />}
-                  {isActive && <Loader2 className="w-2.5 h-2.5 animate-spin text-text-muted motion-reduce:animate-none" />}
+                <span className="inline-flex items-center justify-center w-3.5 h-3.5 shrink-0" aria-hidden>
+                  {isDone && <Check className="w-3.5 h-3.5 text-verified" strokeWidth={2.5} />}
+                  {isActive && <Loader2 className="w-3.5 h-3.5 animate-spin text-structure motion-reduce:animate-none" />}
+                  {!isDone && !isActive && <span className="block w-1.5 h-1.5 rounded-full bg-border-hover" />}
                 </span>
                 <span
                   className={[
