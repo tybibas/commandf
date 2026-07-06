@@ -222,6 +222,30 @@ export type StudioSession = {
   grounding: DeckGrounding;
 };
 
+// ── Spend ledger (commandf_query_costs) ─────────────────────────────────────
+// Read-only aggregate for the Spend tab. Sourced from the cost ledger the backend
+// writes per LLM/embedding call. `model: null` rows are embeddings (no chat model).
+export type CostByModel = {
+  model: string | null;
+  label: string;
+  rows: number;
+  usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+};
+export type CostDaily = { date: string; usd: number; anthropic_usd: number };
+export type CostSummary = {
+  currency: string;              // "usd"
+  since: string;                 // ISO — first ledger row
+  updated_at: string;            // ISO — latest ledger row
+  row_count: number;
+  totals: { all_time: number; anthropic: number; embedding: number; last_24h: number; last_7d: number };
+  by_model: CostByModel[];
+  daily: CostDaily[];            // ascending by date
+};
+
 // ── Errors ─────────────────────────────────────────────────────────────────
 
 export class NotConfiguredError extends Error {
@@ -668,6 +692,17 @@ export async function fetchStudioSession(jobId: string, format?: string): Promis
   );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/studio');
   return json<StudioSession>(res);
+}
+
+/** Read-only spend summary from the cost ledger for the Spend tab. Operator-gated.
+ *  NOTE (contract flag): `GET /costs` is a PROPOSED endpoint — the backend writes
+ *  `commandf_query_costs` (cost_ledger.py) but exposes no read/aggregate route yet.
+ *  Built + mocked against this shape; confirm/adjust with the backend lane. */
+export async function fetchCostSummary(): Promise<CostSummary> {
+  const url = requireUrl();
+  const res = await fetchWithTimeout(`${url}/costs`, { headers: await authHeaders() }, T_FAST, 'Loading spend');
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/costs');
+  return json<CostSummary>(res);
 }
 
 /** The `<img src>` URL for a single rendered slide (§3.4). The `?v={deckRev}`

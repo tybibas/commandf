@@ -13,6 +13,7 @@ import {
   MOCK_OUTLINE, MOCK_DECK_STATUS, MOCK_UPLOAD_STATUS,
   MOCK_STUDIO_SESSION, MOCK_DECK_EDIT_STREAM, MOCK_DECK_EDIT_STREAM_FAIL,
   MOCK_DECK_UNDO_STREAM, MOCK_DECK_UNDO_DEP_ERROR, mockSlidePreview,
+  MOCK_COST_SUMMARY,
 } from './fixtures';
 
 // Parse a stubbed request's JSON body (deck /chat + /undo route on message/target).
@@ -96,6 +97,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes('modal.run') || url.includes('mock.local')) {
     const path = url.split('modal.run').pop() || url;
     if (path.includes('/models')) return jsonRes({ models: MOCK_MODELS });
+    if (path.includes('/costs')) return jsonRes(MOCK_COST_SUMMARY);
     if (path.includes('/sessions') && (init?.method ?? 'GET') === 'DELETE') return jsonRes({ ok: true });
     if (path.includes('/sessions')) return jsonRes({ sessions: MOCK_SESSIONS });
     if (path.includes('/briefing')) return jsonRes(MOCK_BRIEFING);

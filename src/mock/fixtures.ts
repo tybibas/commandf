@@ -5,7 +5,7 @@
 
 import type {
   Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline,
-  StudioSession, DeckStreamEvent,
+  StudioSession, DeckStreamEvent, CostSummary,
 } from '../components/commandf/api';
 
 const now = 1750000000000; // fixed epoch (no Date.now in fixtures → deterministic)
@@ -306,3 +306,26 @@ export const MOCK_DECK_UNDO_DEP_ERROR: DeckStreamEvent[] = [
 ];
 
 export const MOCK_UPLOAD_STATUS = { status: 'complete' as const, chunks_indexed: 87 };
+
+// Spend ledger summary — REAL commandf_query_costs values captured 2026-07-06
+// (so the Spend tab renders accurate figures in the harness).
+export const MOCK_COST_SUMMARY: CostSummary = {
+  currency: 'usd',
+  since: '2026-07-01T21:15:12Z',
+  updated_at: '2026-07-06T13:26:12Z',
+  row_count: 69,
+  totals: { all_time: 8.5149, anthropic: 2.6806, embedding: 5.8343, last_24h: 0.2577, last_7d: 8.5149 },
+  by_model: [
+    { model: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', rows: 51, usd: 2.4047, input_tokens: 1528936, output_tokens: 53612, cache_read_tokens: 1126157, cache_write_tokens: 305519 },
+    { model: 'claude-sonnet-4-5-20250929', label: 'Sonnet 4.5', rows: 4, usd: 0.2760, input_tokens: 34497, output_tokens: 6536, cache_read_tokens: 9548, cache_write_tokens: 19096 },
+    { model: null, label: 'Embeddings', rows: 14, usd: 5.8342, input_tokens: 0, output_tokens: 0, cache_read_tokens: 0, cache_write_tokens: 0 },
+  ],
+  daily: [
+    { date: '2026-07-01', usd: 0.3726, anthropic_usd: 0.3725 },
+    { date: '2026-07-02', usd: 1.5370, anthropic_usd: 1.5370 },
+    { date: '2026-07-03', usd: 6.3474, anthropic_usd: 0.5132 },
+    { date: '2026-07-04', usd: 0.0002, anthropic_usd: 0.0002 },
+    { date: '2026-07-05', usd: 0.0002, anthropic_usd: 0.0002 },
+    { date: '2026-07-06', usd: 0.2575, anthropic_usd: 0.2575 },
+  ],
+};
