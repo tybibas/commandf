@@ -16,8 +16,9 @@ type ChatTurn =
       phase?: string; done: boolean; error?: string;
     };
 
-/** Icon per op family — deterministic on the op-type prefix (contract §2.2). */
-function opIcon(type: string) {
+/** Icon per op family — deterministic on the op-type prefix (contract §2.2).
+ *  Exported so the changelog renders the same glyph per op as the chat. */
+export function opIcon(type: string) {
   if (type.startsWith('add_')) return Plus;
   if (type.startsWith('remove_')) return Trash2;
   if (type.startsWith('reorder_')) return ArrowUpDown;
@@ -109,15 +110,16 @@ function AssistantTurn({ t }: { t: Extract<ChatTurn, { role: 'assistant' }> }) {
  * slice only renders a running list.
  */
 export default function DeckChat({
-  jobId, sending, onSendingChange, onOp, onSlideDirty, onPhase, onBatchDone,
+  jobId, sending, onSendingChange, onBatchStart, onOp, onSlideDirty, onPhase, onBatchDone,
 }: {
   jobId: string;
   sending: boolean;
   onSendingChange: (v: boolean) => void;
-  onOp: (op: DeckOp) => void;
+  onBatchStart: (batchId: string, summary: string) => void;
+  onOp: (op: DeckOp, status: 'applied' | 'failed', error?: string) => void;
   onSlideDirty: (indices: number[]) => void;
   onPhase: (label: string, state: 'active' | 'done') => void;
-  onBatchDone: (deckRev: number) => void;
+  onBatchDone: (batchId: string, deckRev: number, slideOrder?: string[]) => void;
 }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState('');
@@ -152,10 +154,13 @@ export default function DeckChat({
     ctrlRef.current = ctrl;
     try {
       const result = await sendDeckChatStream(jobId, text, {
-        onBatchStart: (e) => updateAssistant(assistantId, (t) => ({ ...t, batchId: e.batch_id })),
+        onBatchStart: (e) => {
+          onBatchStart(e.batch_id, e.summary);
+          updateAssistant(assistantId, (t) => ({ ...t, batchId: e.batch_id }));
+        },
         onAssistantDelta: (chunk) => updateAssistant(assistantId, (t) => ({ ...t, text: t.text + chunk })),
         onOp: (op, _index, status, error) => {
-          onOp(op);
+          onOp(op, status, error);
           updateAssistant(assistantId, (t) => ({ ...t, ops: [...t.ops, { op, status, error }] }));
         },
         // Wire indices are 1-based; the studio state uses 0-based array positions.
@@ -166,7 +171,7 @@ export default function DeckChat({
         },
         onError: (message) => updateAssistant(assistantId, (t) => ({ ...t, error: message })),
       }, ctrl.signal);
-      onBatchDone(result.deck_rev);
+      onBatchDone(result.batch_id, result.deck_rev, result.slide_order);
       updateAssistant(assistantId, (t) => ({ ...t, done: true, phase: undefined }));
     } catch (e: any) {
       const message = e instanceof StreamAbortedError ? 'Cancelled.' : (e?.message || 'Could not apply that edit.');

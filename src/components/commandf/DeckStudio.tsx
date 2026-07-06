@@ -1,25 +1,30 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Presentation } from 'lucide-react';
-import type { DeckOp, JobStatus } from './api';
+import { Presentation, History } from 'lucide-react';
+import type { DeckOp, JobStatus, DeckChatHandlers } from './api';
+import { undoDeckStream } from './api';
 import { SurfaceHeader } from './generationUI';
 import DeckChat from './DeckChat';
 import DeckCanvas from './DeckCanvas';
+import DeckChangelog, { type ChangelogBatch } from './DeckChangelog';
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
 
 /**
  * Deck Studio — the split chat↔canvas surface (charter §C, contract
  * .agents/C2_DECKSTUDIO_CONTRACT.md). A built deck's `JobStatus` (carrying
  * `preview_urls` + `deck_rev`) seeds the session; every further edit flows
- * through DeckChat's streamed op batches, and DeckCanvas re-renders only the
- * slides a batch actually touched.
+ * through DeckChat's streamed op batches, DeckCanvas re-renders only the slides a
+ * batch touched, and DeckChangelog groups the batches for review + undo.
  *
- * State ownership: this component is the single source of truth for the
- * studio session (plain useState, matching DeckSurface's house pattern — no
- * reducer/context). DeckChat and DeckCanvas are both controlled: they read
- * from this state and report events upward via callbacks, never fetching each
- * other's data directly.
+ * State ownership: this component is the single source of truth for the studio
+ * session (plain useState, matching DeckSurface's house pattern — no reducer/
+ * context). The children are controlled: they read from this state and report
+ * events upward, never fetching each other's data directly. Undo is server-
+ * authoritative (R1) — the changelog's undo callbacks stream inverse ops through
+ * the same reconcile path a forward edit uses.
  */
 export default function DeckStudio({
   onBack, jobId, approvedPlan: _approvedPlan, seed, clientSlug: _clientSlug, sessionId: _sessionId,
@@ -36,10 +41,13 @@ export default function DeckStudio({
   const [deckRev, setDeckRev] = useState(seed.deck_rev ?? 1);
   const [previewUrls, setPreviewUrls] = useState<string[]>(seed.preview_urls ?? []);
   const [selectedSlide, setSelectedSlide] = useState(0);
-  const [ops, setOps] = useState<DeckOp[]>([]);
+  const [batches, setBatches] = useState<ChangelogBatch[]>([]);
+  const [slideOrder, setSlideOrder] = useState<string[]>([]);
   const [phase, setPhase] = useState<{ label: string; state: 'active' | 'done' } | null>(null);
   const [sending, setSending] = useState(false);
   const [dirtySlides, setDirtySlides] = useState<Set<number>>(new Set());
+  const [showChangelog, setShowChangelog] = useState(false);
+  const [undoBusy, setUndoBusy] = useState<string | null>(null);
 
   // Chat-to-canvas seam (DESIGN.md §3): the chat column starts full width, then
   // settles to 380px while the canvas fades/slides in +16px. Both driven by the
@@ -53,9 +61,22 @@ export default function DeckStudio({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleOp = useCallback((op: DeckOp) => setOps((prev) => [...prev, op]), []);
+  // ── Forward-edit event handlers (from DeckChat) ──────────────────────────────
+  const handleBatchStart = useCallback((batchId: string, summary: string) => {
+    setBatches((prev) => [...prev, { batchId, summary, ops: [], undone: false }]);
+  }, []);
 
-  const handleSlideDirty = useCallback((indices: number[]) => {
+  const handleOp = useCallback((op: DeckOp, status: 'applied' | 'failed', error?: string) => {
+    setBatches((prev) => {
+      const idx = prev.findIndex((b) => b.batchId === op.batch_id);
+      if (idx === -1) return [...prev, { batchId: op.batch_id, summary: op.summary, ops: [{ op, status, error }], undone: false }];
+      const next = [...prev];
+      next[idx] = { ...next[idx], ops: [...next[idx].ops, { op, status, error }] };
+      return next;
+    });
+  }, []);
+
+  const dirtyFrom = useCallback((indices: number[]) => {
     setDirtySlides((prev) => {
       const next = new Set(prev);
       indices.forEach((i) => next.add(i));
@@ -67,11 +88,15 @@ export default function DeckStudio({
     setPhase(state === 'done' ? null : { label, state });
   }, []);
 
-  // The mock/backend stream doesn't guarantee a trailing `phase: {state:'done'}`
-  // for the last active phase before `batch_done` fires — clear it here too, or
-  // the header subtitle would freeze on "Reworking the risk chart" forever.
-  const handleBatchDone = useCallback((rev: number) => { setDeckRev(rev); setPhase(null); }, []);
+  // The stream doesn't guarantee a trailing `phase:{state:'done'}` before
+  // `batch_done` — clear it here too, or the subtitle would freeze on the last label.
+  const handleBatchDone = useCallback((_batchId: string, rev: number, order?: string[]) => {
+    setDeckRev(rev);
+    if (order) setSlideOrder(order);
+    setPhase(null);
+  }, []);
 
+  // ── Canvas fetch results ─────────────────────────────────────────────────────
   const handleSlidesUpdated = useCallback((updates: [number, string][]) => {
     setPreviewUrls((prev) => {
       const next = [...prev];
@@ -88,15 +113,87 @@ export default function DeckStudio({
     });
   }, []);
 
+  // ── Undo (server-authoritative — inverse ops stream back the same way) ───────
+  // Shared reconcile: an undo batch dirties + re-renders slides exactly like a
+  // forward edit; wire indices are 1-based, the canvas uses 0-based positions.
+  const undoHandlers: DeckChatHandlers = {
+    onSlideDirty: (_ids, indices) => dirtyFrom(indices.map((i) => i - 1)),
+    onPhase: handlePhase,
+  };
+
+  const undoBatch = useCallback(async (batchId: string) => {
+    setUndoBusy(batchId);
+    try {
+      const result = await undoDeckStream(jobId, { batch_id: batchId }, undoHandlers);
+      setDeckRev(result.deck_rev);
+      if (result.slide_order) setSlideOrder(result.slide_order);
+      setBatches((prev) => prev.map((b) =>
+        b.batchId === batchId
+          ? { ...b, undone: true, depNoticeOpId: undefined, ops: b.ops.map((o) => ({ ...o, undone: o.status === 'applied' ? true : o.undone })) }
+          : b));
+    } catch {
+      // A non-recoverable failure leaves the group intact; the operator can retry.
+    } finally {
+      setUndoBusy(null);
+      setPhase(null);
+    }
+    // undoHandlers is stable enough (only closes over stable setters/callbacks).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
+
+  const undoOp = useCallback(async (batchId: string, opId: string) => {
+    setUndoBusy(batchId);
+    let recoverable = false;
+    try {
+      const result = await undoDeckStream(
+        jobId, { op_id: opId },
+        { ...undoHandlers, onError: (_m, r) => { recoverable = r; } },
+      );
+      setDeckRev(result.deck_rev);
+      if (result.slide_order) setSlideOrder(result.slide_order);
+      setBatches((prev) => prev.map((b) => {
+        if (b.batchId !== batchId) return b;
+        const ops = b.ops.map((o) => (o.op.op_id === opId ? { ...o, undone: true } : o));
+        const allDone = ops.every((o) => o.undone || o.status === 'failed');
+        return { ...b, ops, undone: allDone, depNoticeOpId: undefined };
+      }));
+    } catch {
+      // Dependent op the backend can't isolate → steer to a whole-group undo.
+      if (recoverable) {
+        setBatches((prev) => prev.map((b) => (b.batchId === batchId ? { ...b, depNoticeOpId: opId } : b)));
+      }
+    } finally {
+      setUndoBusy(null);
+      setPhase(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
+
+  const appliedChanges = batches.reduce(
+    (n, b) => n + (b.undone ? 0 : b.ops.filter((o) => o.status === 'applied' && !o.undone).length), 0);
+
   const subtitle = phase
     ? phase.label
-    : ops.length > 0
-      ? `${ops.length} change${ops.length === 1 ? '' : 's'} applied so far. Every edit previews instantly.`
+    : appliedChanges > 0
+      ? `${appliedChanges} change${appliedChanges === 1 ? '' : 's'} applied so far. Every edit previews instantly.`
       : 'Chat to edit. Every change previews instantly.';
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
+    <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
       <SurfaceHeader icon={Presentation} title={seed.title || 'Deck studio'} subtitle={subtitle} onBack={onBack} />
+
+      {/* Changelog toggle — floats top-right while the drawer is closed. */}
+      {!showChangelog && (
+        <button
+          type="button"
+          onClick={() => setShowChangelog(true)}
+          className={`absolute top-4 right-6 md:right-7 z-10 inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-elevated px-2.5 py-1 text-caption text-text-secondary hover:text-text-primary hover:border-border-hover shadow-float transition-colors ${FOCUS}`}
+        >
+          <History className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
+          Changes{appliedChanges > 0 ? ` (${appliedChanges})` : ''}
+        </button>
+      )}
+
       <div className="flex-1 min-h-0 flex -mx-6 md:-mx-7 border-t border-border-light">
         <div
           style={{ width: compact ? '380px' : '100%' }}
@@ -106,8 +203,9 @@ export default function DeckStudio({
             jobId={jobId}
             sending={sending}
             onSendingChange={setSending}
+            onBatchStart={handleBatchStart}
             onOp={handleOp}
-            onSlideDirty={handleSlideDirty}
+            onSlideDirty={dirtyFrom}
             onPhase={handlePhase}
             onBatchDone={handleBatchDone}
           />
@@ -128,6 +226,16 @@ export default function DeckStudio({
             onSelectSlide={setSelectedSlide}
           />
         </div>
+        {showChangelog && (
+          <DeckChangelog
+            batches={batches}
+            slideOrder={slideOrder}
+            busyBatchId={undoBusy}
+            onUndoBatch={undoBatch}
+            onUndoOp={undoOp}
+            onClose={() => setShowChangelog(false)}
+          />
+        )}
       </div>
     </div>
   );
