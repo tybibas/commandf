@@ -213,21 +213,29 @@ export default function Conversation({ messages, sending, steps, streamDraft, on
         })}
         {sending && (
           <div className={messages.length > 0 ? 'mt-3' : ''}>
-            {streamDraft ? (
-              // Synthesis turn is streaming — show draft bubble; ThinkingIndicator
-              // is hidden so the draft replaces it naturally. The draft is replaced
-              // by the final citation-normalized text when the 'done' event arrives.
-              <AssistantMessage
-                m={{ role: 'assistant', content: streamDraft, _key: 'stream-draft' }}
-                onReuse={onReuse}
-                onBuildDeck={onBuildDeck}
-                isStreaming
-              />
-            ) : (
+            {/* The thinking trail stays visible above the forming answer so the
+                two never blur together: faded/indented trail = process, the
+                bubble below = the answer streaming in. */}
+            {(steps?.length ?? 0) > 0 && (
               <div className="flex justify-start">
                 <ThinkingIndicator steps={steps} />
               </div>
             )}
+            {streamDraft ? (
+              <div className={(steps?.length ?? 0) > 0 ? 'mt-2' : ''}>
+                <AssistantMessage
+                  m={{ role: 'assistant', content: streamDraft, _key: 'stream-draft' }}
+                  onReuse={onReuse}
+                  onBuildDeck={onBuildDeck}
+                  isStreaming
+                />
+              </div>
+            ) : (steps?.length ?? 0) === 0 ? (
+              // Nothing has streamed yet — neutral waiting trail.
+              <div className="flex justify-start">
+                <ThinkingIndicator steps={steps} />
+              </div>
+            ) : null}
           </div>
         )}
       </div>
