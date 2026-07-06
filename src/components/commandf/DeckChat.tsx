@@ -70,6 +70,15 @@ function AssistantTurn({ t }: { t: Extract<ChatTurn, { role: 'assistant' }> }) {
         <Sparkles className="w-3 h-3 text-accent-ink" strokeWidth={1.75} aria-hidden />
         <span>Command F</span>
       </div>
+      {/* Cold-start bridge: a Modal edit can take 30-45s before the first event
+          (cold job_image: planning + raster). Until any text/phase/op/error lands,
+          show a live working line so the turn never reads as a dead/hung UI. */}
+      {!t.done && !t.text && !t.phase && t.ops.length === 0 && !t.error && (
+        <p className="flex items-center gap-1.5 text-caption text-text-muted" aria-live="polite">
+          <Loader2 className="w-3 h-3 animate-spin text-structure motion-reduce:animate-none" aria-hidden />
+          Working on your edit. This can take a moment on the first one.
+        </p>
+      )}
       {t.text && (
         <p
           className={`text-body-sm text-text-primary leading-relaxed ${
