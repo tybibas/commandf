@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus, Database, Upload, Presentation, Table2, MessageSquare, Wand2, Loader2,
-  Search, GitCompare, Quote,
+  Search, GitCompare, Quote, Layers,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
@@ -27,6 +27,7 @@ import type { ThinkingStep } from './commandf/ThinkingIndicator';
 import Landing, { type QuickAction, type ExampleCard } from './commandf/Landing';
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
+import DeckStudio from './commandf/DeckStudio';
 import SurveySurface from './commandf/SurveySurface';
 import KnowledgePanel from './commandf/KnowledgePanel';
 import CommandPalette, { type PaletteCommand } from './commandf/CommandPalette';
@@ -56,7 +57,7 @@ const PROMPT_ICP = 'What ICP and proof points did we lead with for a new client 
 // comparison after an answer with sources lands.
 const PROMPT_COMPARE_SOURCES = 'Compare the engagements cited above side by side: what patterns repeat?';
 
-type Surface = 'home' | 'chat' | 'deck' | 'survey';
+type Surface = 'home' | 'chat' | 'deck' | 'survey' | 'deckstudio';
 
 function greetingForNow(): string {
   // Anchor to Pacific time regardless of the viewer's local zone, so the
@@ -106,6 +107,12 @@ export function CommandFPage({
   const [showPalette, setShowPalette] = useState(false);
   const [deckSeed, setDeckSeed] = useState('');
   const [pinnedFileIds, setPinnedFileIds] = useState<string[]>([]);  // source-pinning for deck build
+  // Deck Studio (C-2): the last deck job handed off from DeckSurface's "Edit in
+  // studio →". Kept even after leaving the studio surface so the command
+  // palette can jump straight back in without re-opening the build panel.
+  const [deckStudioSeed, setDeckStudioSeed] = useState<{
+    jobId: string; seed: import('./commandf/api').JobStatus; approvedPlan: Record<string, unknown> | null;
+  } | null>(null);
   const [steps, setSteps] = useState<ThinkingStep[]>([]);  // live agent progress
   // Accumulated text from delta SSE events — shown as a draft assistant bubble
   // while the synthesis turn streams. Cleared (replaced) on the done event so
@@ -513,6 +520,16 @@ export function CommandFPage({
     setSurface('deck');
   }, [messages]);
 
+  // Deck → Deck Studio handoff (C-2): opens the split chat↔canvas editor seeded
+  // with the just-built deck. Kept as its own callback (rather than inlining in
+  // DeckSurface) so the palette can re-open the same seed later.
+  const openDeckStudio = useCallback((args: {
+    jobId: string; seed: import('./commandf/api').JobStatus; approvedPlan: Record<string, unknown> | null;
+  }) => {
+    setDeckStudioSeed(args);
+    setSurface('deckstudio');
+  }, []);
+
   // W6.3 — deterministic follow-up chip. Shown only once the LATEST assistant
   // turn has actually finished (not streaming) and carries real sources; hides
   // the instant the user starts typing or sends, so it never lingers stale.
@@ -544,6 +561,9 @@ export function CommandFPage({
     { id: 'knowledge', label: 'Open knowledge base', group: 'Actions', icon: Database, hint: docs ? docs.toLocaleString() : undefined, keywords: 'documents sources upload drive', run: () => setShowKnowledge(true) },
     { id: 'deck', label: 'Build a deck', group: 'Actions', icon: Presentation, hint: 'PPTX', keywords: 'presentation slides pptx', run: () => setSurface('deck') },
     { id: 'survey', label: 'Survey compendium', group: 'Actions', icon: Table2, hint: 'XLSX', keywords: 'spreadsheet xlsx', run: () => setSurface('survey') },
+    ...(deckStudioSeed
+      ? [{ id: 'deckstudio', label: 'Edit in deck studio', group: 'Actions', icon: Layers, keywords: 'edit ops chat canvas', run: () => setSurface('deckstudio') } as PaletteCommand]
+      : []),
     ...sessions.slice(0, 8).map((s): PaletteCommand => ({
       id: `s-${s.id}`, label: s.title || 'Untitled', group: 'Recent', icon: MessageSquare,
       hint: timeAgo(s.updated_at), run: () => openSession(s.id),
@@ -679,7 +699,16 @@ export function CommandFPage({
           </div>
         )}
         {surface === 'deck' ? (
-          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} initialFileIds={pinnedFileIds} onOpenSurvey={() => setSurface('survey')} />
+          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} initialFileIds={pinnedFileIds} onOpenSurvey={() => setSurface('survey')} onOpenStudio={openDeckStudio} />
+        ) : surface === 'deckstudio' && deckStudioSeed ? (
+          <DeckStudio
+            onBack={() => setSurface('home')}
+            jobId={deckStudioSeed.jobId}
+            approvedPlan={deckStudioSeed.approvedPlan}
+            seed={deckStudioSeed.seed}
+            clientSlug={activeContext}
+            sessionId={sessionId}
+          />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (

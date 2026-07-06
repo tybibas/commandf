@@ -51,7 +51,7 @@ const LENGTHS: { id: string; label: string }[] = [
 type OutlinePhase = 'idle' | 'loading' | 'error' | 'pending';
 
 export default function DeckSurface({
-  onBack, clientSlug, sessionId, initialBrief, initialFileIds, onOpenSurvey,
+  onBack, clientSlug, sessionId, initialBrief, initialFileIds, onOpenSurvey, onOpenStudio,
 }: {
   onBack: () => void;
   clientSlug?: string;
@@ -61,6 +61,9 @@ export default function DeckSurface({
   // these sources", these Drive file_ids scope/seed retrieval to those documents.
   initialFileIds?: string[];
   onOpenSurvey?: () => void;
+  // Deck Studio (C-2) handoff — opens the split chat↔canvas editor seeded with
+  // this completed build. Omitted while the studio surface isn't wired in yet.
+  onOpenStudio?: (args: { jobId: string; seed: import('./api').JobStatus; approvedPlan: Record<string, unknown> | null }) => void;
 }) {
   const [type, setType] = useState('');
   const [brief, setBrief] = useState(initialBrief ?? '');
@@ -206,7 +209,7 @@ export default function DeckSurface({
               kindLabel="Deck"
               onReset={resetAll}
               slideEdit={slideEdit}
-              secondaryAction={continueAction()}
+              secondaryAction={continueAction() ?? studioAction()}
             />
           ) : job.phase === 'pending' ? (
             <PendingBuildNote />
@@ -350,6 +353,21 @@ export default function DeckSurface({
     const remaining = total - builtThrough;
     const n = Math.min(sectionSize, remaining);
     return { label: `Build next ${n} slide${n === 1 ? '' : 's'}`, onClick: buildNextSlice };
+  }
+
+  // "Edit in studio →" — only once the plan-building continuation is done (it
+  // takes priority on the single secondary-action slot) and the caller wired
+  // the handoff. Needs the job id (for the edit-op stream) + the result (for
+  // the studio's seed: preview_urls + deck_rev).
+  function studioAction(): { label: string; onClick: () => void } | undefined {
+    if (!onOpenStudio) return undefined;
+    const r = editedResult ?? job.result;
+    const id = job.jobId;
+    if (!r || !id) return undefined;
+    return {
+      label: 'Edit in studio →',
+      onClick: () => onOpenStudio({ jobId: id, seed: r, approvedPlan: builtPlan }),
+    };
   }
 
   function resetAll() {
