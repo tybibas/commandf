@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Plus, Database, Upload, Presentation, Table2, Search, GitCompare, MessageSquare, Wand2, Loader2,
+  Plus, Database, Upload, Presentation, Table2, MessageSquare, Wand2, Loader2,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
@@ -23,7 +23,7 @@ import { timeAgo } from './commandf/util';
 import Composer from './commandf/Composer';
 import Conversation from './commandf/Conversation';
 import type { ThinkingStep } from './commandf/ThinkingIndicator';
-import Landing, { type QuickAction } from './commandf/Landing';
+import Landing, { type QuickAction, type ExampleCard } from './commandf/Landing';
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
 import SurveySurface from './commandf/SurveySurface';
@@ -43,7 +43,12 @@ const tagMsgs = (msgs: Message[]): Message[] => msgs.map((m) => m._key ? m : mkM
 const PROMPT_ICP = 'Summarise our ICP and positioning for a new client pitch';
 const PROMPT_PROOF = 'What proof points and case studies can I cite for an agency lead?';
 const PROMPT_SIMILAR = 'Which engagements are most similar to a mid-market roll-up?';
-const PROMPT_COMPARE = 'Compare how we framed the repositioning at Stonepoint with the redesign at Cardinal.';
+const PROMPT_COMPARE = 'Compare our Acrisure and K2 Insurance work on buy-and-build strategy';
+const PROMPT_DECK_BUILD = 'Build a first-pass CDD deck for an insurance brokerage aggregator';
+// "Build a deck from these sources" already exists in SourceCard/SourceList
+// (per-message affordance) — this pre-fills the composer to invite a follow-on
+// comparison after an answer with sources lands.
+const PROMPT_COMPARE_SOURCES = 'Compare the engagements cited above side by side: what patterns repeat?';
 
 type Surface = 'home' | 'chat' | 'deck' | 'survey';
 
@@ -502,6 +507,13 @@ export function CommandFPage({
     setSurface('deck');
   }, [messages]);
 
+  // W6.3 — deterministic follow-up chip. Shown only once the LATEST assistant
+  // turn has actually finished (not streaming) and carries real sources; hides
+  // the instant the user starts typing or sends, so it never lingers stale.
+  const lastMsg = messages[messages.length - 1];
+  const showCompareChip = surface === 'chat' && !sending && !input.trim()
+    && lastMsg?.role === 'assistant' && !lastMsg.error && (lastMsg.sources?.length ?? 0) > 0;
+
   if (notConfigured) {
     return (
       <div className="flex-1 flex items-center justify-center p-8">
@@ -532,16 +544,23 @@ export function CommandFPage({
     })),
   ];
 
-  // Lead with the tool's most distinctive capability (build a deck grounded in
-  // past work), then the two highest-value ways to interrogate the firm's memory.
-  // "Draft in our voice" was dropped from the lead row — it's an outreach/PulsePoint
-  // pattern, not an Actionist lead function, and a grounded memo is reachable by
-  // prompt or the deck's pov_memo type when actually needed.
-  const quickActions: QuickAction[] = [
-    { label: 'Build a deck', icon: Presentation, onClick: () => setSurface('deck') },
-    { label: 'Find a precedent', icon: Search, onClick: () => selectPrompt(isActionist ? PROMPT_SIMILAR : PROMPT_PROOF) },
-    { label: 'Compare engagements', icon: GitCompare, onClick: () => selectPrompt(isActionist ? PROMPT_COMPARE : PROMPT_ICP) },
-  ];
+  // "Build a deck" stays the one primary action (house rule: one primary per
+  // view) — it launches the deck surface directly. The example cards below it
+  // are a different kind of affordance: real questions that pre-fill the
+  // composer, teaching what the firm's memory can answer (W6.1).
+  const buildDeckAction: QuickAction = { label: 'Build a deck', icon: Presentation, onClick: () => setSurface('deck') };
+  const exampleCards: ExampleCard[] = (isActionist
+    ? [
+        { category: 'Precedent search', question: PROMPT_SIMILAR, description: 'Search the corpus for comparable work and cited sources.' },
+        { category: 'Deck build', question: PROMPT_DECK_BUILD, description: 'Outline first, then slides in the house style.' },
+        { category: 'Engagement comparison', question: PROMPT_COMPARE, description: 'Side-by-side patterns across engagements.' },
+      ]
+    : [
+        { category: 'Precedent search', question: PROMPT_PROOF, description: 'Search the corpus for comparable work and proof points.' },
+        { category: 'Deck build', question: PROMPT_DECK_BUILD, description: 'Outline first, then slides in the house style.' },
+        { category: 'Positioning', question: PROMPT_ICP, description: "Summarise the workspace's ICP and positioning." },
+      ]
+  ).map((c) => ({ ...c, onClick: () => selectPrompt(c.question) }));
 
   const plusItems = [
     { label: 'Upload a file', icon: Upload, onClick: () => { setShowKnowledge(true); setShowPlus(false); } },
@@ -606,7 +625,8 @@ export function CommandFPage({
       sending={sending}
       onCancel={cancelStream}
       focusKey={focusKey}
-      placeholder={surface === 'chat' ? 'Ask a follow-up…' : "Ask the firm's memory…"}
+      placeholder={surface === 'chat' ? 'Ask a follow-up…' : "Ask the firm's memory: how did we approach [topic] for [client]…"}
+      rotatingPlaceholder={surface !== 'chat'}
       models={models}
       model={model}
       onModelChange={setModel}
@@ -671,6 +691,19 @@ export function CommandFPage({
               </div>
             )}
             <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} streamDraft={streamDraft || undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
+            {showCompareChip && (
+              <div className="px-6 pt-3 shrink-0">
+                <div className="max-w-2xl mx-auto flex flex-wrap gap-2 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => prefillComposer(PROMPT_COMPARE_SOURCES)}
+                    className={`rounded-pill border border-border-light bg-bg-elevated text-body-sm px-3.5 py-1.5 text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors ${MOTION} ${FOCUS}`}
+                  >
+                    Compare these engagements side by side
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>
             </div>
@@ -682,7 +715,8 @@ export function CommandFPage({
             contextLabel={contextLabel}
             logoSrc={logoSrc}
             composer={composer}
-            quickActions={quickActions}
+            buildDeckAction={buildDeckAction}
+            exampleCards={exampleCards}
             docCount={docs}
             lastSync={lastSync ? timeAgo(lastSync) : undefined}
           />

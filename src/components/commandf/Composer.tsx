@@ -8,6 +8,19 @@ const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:rin
 // calculation and as the JS-enforced cap (max-h-48 removed from className).
 const MAX_COMPOSER_PX = 200;
 
+// Root/empty-composer teaching rotation — real, on-domain consulting queries
+// (no fabricated data, just example prompts). Rotates only on the landing
+// composer (`rotatingPlaceholder`); follow-up mode keeps its static prompt.
+const ROTATING_PLACEHOLDERS = [
+  "Ask the firm's memory: how did we approach a mid-market roll-up?",
+  'Which engagements are most similar to an insurance brokerage aggregator?',
+  'What was our buy-and-build thesis for Acrisure?',
+  'Build a first-pass CDD deck for a specialty MGA consolidator',
+  'Compare our diligence approach across two portfolio companies',
+  'What synergy assumptions did we use in past roll-up models?',
+];
+const ROTATE_MS = 4000;
+
 export interface ComposerProps {
   value: string;
   onChange: (v: string) => void;
@@ -25,6 +38,11 @@ export interface ComposerProps {
   leadingControls?: React.ReactNode;
   /** When provided, a Cancel button is shown while `sending` is true. */
   onCancel?: () => void;
+  /** Root/landing composer only — cross-fades through ROTATING_PLACEHOLDERS while
+   * the field is empty (including while focused, so the teaching queries are
+   * visible on first load). Stops the instant there's text so it never fights
+   * typing; follow-up mode leaves this unset and keeps its static `placeholder`. */
+  rotatingPlaceholder?: boolean;
 }
 
 /**
@@ -36,11 +54,23 @@ export interface ComposerProps {
 export default function Composer({
   value, onChange, onSubmit, placeholder = "Ask the firm's memory…",
   disabled = false, sending = false, autoFocus = false, focusKey,
-  models, model, onModelChange, leadingControls, onCancel,
+  models, model, onModelChange, leadingControls, onCancel, rotatingPlaceholder = false,
 }: ComposerProps) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const modelWrapRef = useRef<HTMLDivElement>(null);
   const [modelOpen, setModelOpen] = useState(false);
+  const [rotIndex, setRotIndex] = useState(0);
+
+  // Advance the rotation while the field is empty (even when focused, so a
+  // first-time visitor whose cursor auto-lands here still sees the teaching
+  // queries cycle behind the caret); it stops the moment there's text so it
+  // never fights typing. Plain setInterval + CSS transition, no rAF loop.
+  const rotationActive = rotatingPlaceholder && !value;
+  useEffect(() => {
+    if (!rotationActive) return;
+    const id = setInterval(() => setRotIndex((i) => (i + 1) % ROTATING_PLACEHOLDERS.length), ROTATE_MS);
+    return () => clearInterval(id);
+  }, [rotationActive]);
 
   // Auto-grow up to MAX_COMPOSER_PX ceiling, then scroll internally.
   useEffect(() => {
@@ -87,17 +117,30 @@ export default function Composer({
 
   return (
     <div className="relative rounded-card bg-bg-secondary px-3 pt-3 pb-2.5 border border-border transition-all duration-base ease-out-expo focus-within:bg-bg-elevated focus-within:border-text-primary/40 focus-within:shadow-float">
-      <textarea
-        ref={taRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={onKeyDown}
-        rows={1}
-        disabled={disabled}
-        placeholder={placeholder}
-        aria-label="Message Command F"
-        className="block w-full resize-none bg-transparent px-2 pt-1 pb-2 outline-none focus:outline-none focus-visible:outline-none text-base text-text-primary placeholder:text-text-muted leading-relaxed disabled:opacity-50"
-      />
+      <div className="relative">
+        <textarea
+          ref={taRef}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={onKeyDown}
+          rows={1}
+          disabled={disabled}
+          placeholder={rotatingPlaceholder ? '' : placeholder}
+          aria-label="Message Command F"
+          className="block w-full resize-none bg-transparent px-2 pt-1 pb-2 outline-none focus:outline-none focus-visible:outline-none text-base text-text-primary placeholder:text-text-muted leading-relaxed disabled:opacity-50"
+        />
+        {/* Rotating example overlay — decorative only; the textarea keeps a
+            stable aria-label so the rotation never disrupts screen readers. */}
+        {rotationActive && (
+          <span
+            key={rotIndex}
+            aria-hidden="true"
+            className="animate-placeholder-fade pointer-events-none absolute inset-x-0 top-0 px-2 pt-1 pb-2 text-base text-text-muted leading-relaxed truncate"
+          >
+            {ROTATING_PLACEHOLDERS[rotIndex]}
+          </span>
+        )}
+      </div>
 
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 items-center gap-2">{leadingControls}</div>

@@ -27,6 +27,15 @@ export interface QuickAction {
   onClick: () => void;
 }
 
+/** One landing example card (W6.1) — a real question, not a fabricated one,
+ * that pre-fills the composer on click. See DESIGN.md §3 "Example card". */
+export interface ExampleCard {
+  category: string;
+  question: string;
+  description: string;
+  onClick: () => void;
+}
+
 interface LandingProps {
   loading: boolean;
   /** Time-aware serif greeting, e.g. "Good evening". */
@@ -36,7 +45,10 @@ interface LandingProps {
   /** Workspace logo (Actionist wordmark) — shown in the chip when provided. */
   logoSrc?: string;
   composer: React.ReactNode;
-  quickActions: QuickAction[];
+  /** The tool's single primary action — house rule: one primary per view. */
+  buildDeckAction: QuickAction;
+  /** Three example questions under the composer, replacing the old chip row. */
+  exampleCards: ExampleCard[];
   docCount: number;
   lastSync?: string | null;
 }
@@ -47,8 +59,9 @@ interface LandingProps {
  * chips. No boxes, no clutter — the input is the only elevated object.
  */
 export default function Landing({
-  loading, greeting, contextLabel, logoSrc, composer, quickActions, docCount, lastSync,
+  loading, greeting, contextLabel, logoSrc, composer, buildDeckAction, exampleCards, docCount, lastSync,
 }: LandingProps) {
+  const DeckIcon = buildDeckAction.icon;
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto scrollbar-thin">
       <div className="min-h-full flex flex-col items-center justify-center px-6 py-12">
@@ -83,28 +96,35 @@ export default function Landing({
             {composer}
           </div>
 
-          {/* Quick actions — flat chips, distilled from Claude's Write / Strategize row */}
-          {quickActions.length > 0 && (
-            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 animate-fade-in" style={{ animationDelay: '80ms' }}>
-              {quickActions.map(({ label, icon: Icon, onClick }) => {
-                // House rule: one primary per view. "Build a deck" is the tool's
-                // most distinctive capability — it leads in plum (the structure
-                // color), distinct from the single orange accent (the send button).
-                const primary = label === 'Build a deck';
-                return (
-                  <button
-                    key={label}
-                    type="button"
-                    onClick={onClick}
-                    className={primary
-                      ? `group inline-flex items-center gap-1.5 rounded-pill bg-structure px-3 py-1.5 text-caption font-medium text-structure-ink hover:bg-structure-hover transition-colors ${MOTION} ${FOCUS}`
-                      : `group inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-primary px-3 py-1.5 text-caption text-text-secondary hover:text-text-primary hover:border-border-hover hover:bg-bg-secondary transition-colors ${MOTION} ${FOCUS}`}
-                  >
-                    <Icon className={`w-3.5 h-3.5 transition-colors ${primary ? 'text-structure-ink' : 'text-accent-ink'}`} strokeWidth={1.75} />
-                    {label}
-                  </button>
-                );
-              })}
+          {/* The one primary action (house rule): "Build a deck" leads in plum
+              (the structure color), distinct from everything below it. */}
+          <div className="mt-4 flex justify-center animate-fade-in" style={{ animationDelay: '80ms' }}>
+            <button
+              type="button"
+              onClick={buildDeckAction.onClick}
+              className={`group inline-flex items-center gap-1.5 rounded-pill bg-structure px-3.5 py-1.5 text-caption font-medium text-structure-ink hover:bg-structure-hover transition-colors ${MOTION} ${FOCUS}`}
+            >
+              <DeckIcon className="w-3.5 h-3.5 text-structure-ink" strokeWidth={1.75} />
+              {buildDeckAction.label}
+            </button>
+          </div>
+
+          {/* Example cards (W6.1) — real questions, not chips, that teach what
+              the firm's memory can answer. Click pre-fills the composer. */}
+          {exampleCards.length > 0 && (
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 animate-fade-in" style={{ animationDelay: '110ms' }}>
+              {exampleCards.map(({ category, question, description, onClick }) => (
+                <button
+                  key={question}
+                  type="button"
+                  onClick={onClick}
+                  className={`group text-left bg-bg-elevated border border-border-light rounded-surface p-4 hover:border-border-hover hover:-translate-y-px transition-all ${MOTION} ${FOCUS}`}
+                >
+                  <p className="text-caption text-text-muted">{category}</p>
+                  <p className="mt-1.5 text-body-sm font-medium text-text-primary leading-snug line-clamp-2">{question}</p>
+                  <p className="mt-1 text-caption text-text-muted leading-relaxed">{description}</p>
+                </button>
+              ))}
             </div>
           )}
 
