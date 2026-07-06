@@ -95,6 +95,9 @@ export type JobStatus = {
   title?: string;
   download_url?: string;
   preview_urls?: string[];
+  // Deck Studio (C-2): monotonic revision of the built deck; seeds the studio
+  // session and the `?v=` preview cache-bust. Absent on pre-studio builds.
+  deck_rev?: number;
   placeholders?: string[];
   plan?: Record<string, unknown>;  // carried on a completed deck so slides can be edited
   // Chunked-build continuity markers (present on a section build). The UI offers
@@ -131,6 +134,83 @@ export type DeckOutline = {
  * — any other value returns HTTP 400. Every other UI chip is folded into the
  * request prose instead (the planner is LLM-driven and adapts). See DeckSurface. */
 export const DECK_ENUM_TYPES = new Set(['proposal', 'engagement_recap', 'pov_memo']);
+
+// ── Deck Studio (C-2) — edit-op protocol & reflection payloads ───────────────
+// Contract: .agents/C2_DECKSTUDIO_CONTRACT.md (backend lane, feat/commandf-brain-v2).
+// Transport is SSE (`data: {json}\n\n`) — same framing as sendChatStream — with the
+// event types in §3.1. The op envelope (§2.1) is opaque to the UI except for the
+// display fields (summary/target/affects_slides); `before`/`after` are the backend's
+// restorable state and the UI never interprets them (undo is server-authoritative, R1).
+
+/** Which part of a slide an op targets. `element_id` omitted = slide-level op.
+ *  Reserved element ids: title, lede, body, chart, score_device, source, legend,
+ *  company; collection members carry their own id (Bullet/Row/Column/…). */
+export type DeckOpTarget = { slide_id: string; element_id?: string };
+
+/** One reversible edit op (§2.1). The UI shows `summary` + `target`; it does not
+ *  read `before`/`after` (kept opaque so the contract can evolve them freely). */
+export type DeckOp = {
+  op_id: string;
+  batch_id: string;
+  type: string;                 // e.g. rewrite_body, edit_bullet, change_chart_type, rewrite_slide
+  target: DeckOpTarget;
+  summary: string;              // human, one line, past-tense
+  reversible: boolean;
+  affects_slides: string[];     // slide_ids to re-raster
+  before?: unknown;
+  after?: unknown;
+};
+
+/** Stream event lines (§3.1). Discriminated on `event`. */
+export type DeckStreamEvent =
+  | { event: 'batch_start'; batch_id: string; planned: number; summary: string }
+  | { event: 'assistant_delta'; text: string }
+  | { event: 'op'; op: DeckOp; index: number; status: 'applied' | 'failed' }
+  | { event: 'slide_dirty'; slide_ids: string[]; slide_indices: number[] }
+  | { event: 'phase'; label: string; state: 'active' | 'done' }
+  | { event: 'batch_done'; batch_id: string; deck_rev: number; applied: number; failed: number }
+  | { event: 'error'; recoverable: boolean; message: string };
+
+export type DeckBatchDone = { batch_id: string; deck_rev: number; applied: number; failed: number };
+
+// B-reflection (§4) — category grounding, delivered as STRUCTURED JSON on session
+// open (the backend does the extraction; the UI never parses a style string).
+export type BuildFormatOption = { format: string; target_category: string; label: string };
+export type StyleExemplar = {
+  deck_name: string;
+  deliverable_type: string;
+  service_line: string;
+  density: string;
+  uses_harvey_balls: boolean;
+  chart_types: string[];
+  frameworks: string[];
+  archetype_sequence: string[];
+  png_prefix: string;
+  n_slides: number;
+};
+export type DeckGrounding = {
+  target_category: string;
+  content_pool: {
+    n_chunks: number; n_files: number; category_matched_files: number;
+    top_similarity: number; similarity_floor: number;
+  };
+  style_exemplars: {
+    filter_deliverable_type: string;
+    n_matched: number;
+    /** TRUE => B3 loud fail-open fired (no category-matched style exemplars) — the
+     *  trust footer MUST surface this as a soft warning, not hide it. */
+    fell_back_unfiltered: boolean;
+    exemplars: StyleExemplar[];
+  };
+};
+/** Returned when a built deck enters a studio session (§4). */
+export type StudioSession = {
+  deck_rev: number;
+  build_format_options: BuildFormatOption[];
+  active_format: string;
+  active_target_category: string;
+  grounding: DeckGrounding;
+};
 
 // ── Errors ─────────────────────────────────────────────────────────────────
 
@@ -560,6 +640,118 @@ export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
   return json<JobStatus>(res);
+}
+
+/** Studio session payload (§4) for a built deck: build-format options + the
+ *  category-grounding provenance. Throws EndpointPending on 404/501 so the surface
+ *  can degrade gracefully while the backend endpoint is still landing. */
+export async function fetchStudioSession(jobId: string): Promise<StudioSession> {
+  const url = requireUrl();
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/${encodeURIComponent(jobId)}/studio-session`,
+    { headers: await authHeaders() },
+    T_GEN, 'Opening studio session',
+  );
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/studio-session');
+  return json<StudioSession>(res);
+}
+
+/** The `<img src>` URL for a single rendered slide (§3.4). The `?v={deckRev}`
+ *  cache-bust (NOT Date.now) keeps re-renders idempotent + CDN-cacheable; untouched
+ *  slides keep their cached PNG. Token rides as a query param because an `<img>`
+ *  can't send an Authorization header (same pattern as authedDownloadUrl).
+ *
+ *  Dev-only: the mock harness sets `window.__commandfMockPreview` to serve data-URI
+ *  slide placeholders, since `<img>` loads bypass the stubbed window.fetch. */
+export async function deckSlidePreviewUrl(
+  jobId: string, slideIndex: number, deckRev: number,
+): Promise<string> {
+  const mock = (window as unknown as { __commandfMockPreview?: (i: number, rev: number) => string })
+    .__commandfMockPreview;
+  if (mock) return mock(slideIndex, deckRev);
+  const url = requireUrl();
+  const base = `${url}/generate-deck/${encodeURIComponent(jobId)}/preview/${slideIndex}?v=${deckRev}`;
+  const token = await currentToken();
+  return token ? `${base}&token=${encodeURIComponent(token)}` : base;
+}
+
+/** Handlers for the deck edit-op stream. Each fires as its event line arrives;
+ *  all optional so a caller can subscribe to only what it renders. */
+export type DeckChatHandlers = {
+  onBatchStart?: (e: { batch_id: string; planned: number; summary: string }) => void;
+  onAssistantDelta?: (text: string) => void;
+  onOp?: (op: DeckOp, index: number, status: 'applied' | 'failed') => void;
+  onSlideDirty?: (slideIds: string[], slideIndices: number[]) => void;
+  onPhase?: (label: string, state: 'active' | 'done') => void;
+  onError?: (message: string, recoverable: boolean) => void;
+};
+
+/** Streaming deck edit: POSTs a user message to the deck-chat endpoint and drives
+ *  the §3.1 event handlers as ops apply, resolving with the terminal batch_done
+ *  (carrying the new deck_rev). Same SSE framing + idle-timeout guard as
+ *  sendChatStream. The backend commits once at batch_done (single doc write +
+ *  whole-deck rebuild); the caller re-fetches only `affects_slides` previews. */
+export async function sendDeckChatStream(
+  jobId: string, message: string, handlers: DeckChatHandlers, signal?: AbortSignal,
+): Promise<DeckBatchDone> {
+  const IDLE_MS = 90_000;
+  const url = requireUrl();
+
+  const internalCtrl = new AbortController();
+  const combined = signal
+    ? (AbortSignal as any).any?.([signal, internalCtrl.signal]) ?? internalCtrl.signal
+    : internalCtrl.signal;
+  let externalAborted = false;
+  signal?.addEventListener('abort', () => { externalAborted = true; internalCtrl.abort(); });
+
+  let idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS);
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS); };
+
+  try {
+    const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/chat`, {
+      method: 'POST',
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message }),
+      signal: combined,
+    });
+    if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/chat');
+    if (!res.ok || !res.body) throw new Error(`deck edit failed (${res.status})`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let final: DeckBatchDone | null = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() ?? '';
+      for (const p of parts) {
+        const line = p.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const evt = JSON.parse(line.slice(6)) as DeckStreamEvent;
+        switch (evt.event) {
+          case 'batch_start': handlers.onBatchStart?.(evt); break;
+          case 'assistant_delta': handlers.onAssistantDelta?.(evt.text ?? ''); break;
+          case 'op': handlers.onOp?.(evt.op, evt.index, evt.status); break;
+          case 'slide_dirty': handlers.onSlideDirty?.(evt.slide_ids ?? [], evt.slide_indices ?? []); break;
+          case 'phase': handlers.onPhase?.(evt.label, evt.state); break;
+          case 'batch_done': final = { batch_id: evt.batch_id, deck_rev: evt.deck_rev, applied: evt.applied, failed: evt.failed }; break;
+          case 'error': handlers.onError?.(evt.message, evt.recoverable); throw new Error(evt.message || 'deck edit failed');
+        }
+      }
+    }
+    if (!final) throw new Error('stream ended without a batch_done');
+    return final;
+  } catch (e: any) {
+    if (e?.name === 'AbortError' || internalCtrl.signal.aborted || externalAborted) {
+      throw new StreamAbortedError();
+    }
+    throw e;
+  } finally {
+    clearTimeout(idleTimer);
+  }
 }
 
 /** Builds a download href an `<a download>` can use: the download endpoints accept

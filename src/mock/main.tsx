@@ -11,7 +11,13 @@ import { supabase } from '../lib/supabase';
 import {
   MOCK_MODELS, MOCK_SESSIONS, MOCK_BRIEFING, MOCK_CHAT_RESPONSE, MOCK_HISTORY,
   MOCK_OUTLINE, MOCK_DECK_STATUS, MOCK_UPLOAD_STATUS,
+  MOCK_STUDIO_SESSION, MOCK_DECK_EDIT_STREAM, mockSlidePreview,
 } from './fixtures';
+
+// Deck Studio previews: `<img>` loads bypass the fetch stub below, so the api
+// client reads slide PNGs from this hook in the harness (see deckSlidePreviewUrl).
+(window as unknown as { __commandfMockPreview?: (i: number, rev: number) => string })
+  .__commandfMockPreview = mockSlidePreview;
 
 // ── Stub the Supabase session (authHeaders/currentToken succeed) ─────────────
 (supabase.auth as any).getSession = async () => ({
@@ -32,6 +38,23 @@ import {
 const jsonRes = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
+// Streams SSE `data: {json}\n\n` frames with a gap between them, so the reader's
+// incremental parse and the UI's live op rendering are exercised — not a single blob.
+const sseRes = (events: unknown[], gap = 240) =>
+  new Response(
+    new ReadableStream({
+      async start(controller) {
+        const enc = new TextEncoder();
+        for (const evt of events) {
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(evt)}\n\n`));
+          await new Promise((r) => setTimeout(r, gap));
+        }
+        controller.close();
+      },
+    }),
+    { status: 200, headers: { 'Content-Type': 'text/event-stream' } },
+  );
+
 const realFetch = window.fetch.bind(window);
 window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -46,6 +69,10 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       await new Promise((r) => setTimeout(r, 500));
       return jsonRes({ optimized: 'Build a board/SteerCo update deck for the Q3 value-creation review.\n\nAudience: the board (partner-level, answer-first).\nDecision to drive: approve the remaining structural change.\nCover: quick wins banked to date, the structural decision and its de-risking, and the two tracked risks with mitigations.' });
     }
+    // Deck Studio (C-2): studio session (B/A) + streaming edit-op chat. These MUST
+    // precede the generic /chat handler — the deck-chat URL also contains '/chat'.
+    if (path.includes('/generate-deck') && path.includes('/studio-session')) return jsonRes(MOCK_STUDIO_SESSION);
+    if (path.includes('/generate-deck') && path.includes('/chat')) return sseRes(MOCK_DECK_EDIT_STREAM);
     if (path.includes('/chat')) {
       await new Promise((r) => setTimeout(r, 650)); // let the typing indicator show
       return jsonRes(MOCK_CHAT_RESPONSE);

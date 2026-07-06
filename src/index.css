@@ -94,6 +94,13 @@
   --elevation-float: 0 4px 16px rgba(37,23,41,0.10), 0 1px 3px rgba(37,23,41,0.06);
   --elevation-float-hover: 0 6px 24px rgba(37,23,41,0.14), 0 2px 5px rgba(37,23,41,0.08);
 
+  /* ── Deck Studio (DESIGN.md §3 hooks) ───────────────────────────────
+     --studio-canvas = the tray the slides float on; --studio-slide = the
+     slide page itself, ALWAYS paper (a deck page reads as paper even in the
+     dark UI, so studio-slide is NOT overridden in the dark theme). */
+  --color-studio-canvas: var(--paper-100);
+  --color-studio-slide:  var(--paper-50);
+
   /* ── W0.4 Shape ───────────────────────────────────────────────────── */
   --radius-control: 6px;
   --radius-surface: 10px;
@@ -177,6 +184,9 @@
   --color-border-strong: rgba(234,232,236,0.26);
   --color-focus-ring:    rgba(82,52,91,0.60);
   --color-hairline:      rgba(234,232,236,0.07);
+
+  /* Deck Studio — dark tray; the slide page (--color-studio-slide) stays paper. */
+  --color-studio-canvas: var(--dark-800);
 
   /* Elevation (hairline-first on dark) */
   --elevation-float: 0 0 0 1px var(--color-border), 0 8px 24px -12px rgba(0,0,0,0.7);
