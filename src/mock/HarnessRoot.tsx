@@ -5,6 +5,7 @@ import { CommandFPage } from '../components/CommandFPage';
 import { CommandFLogin } from '../standalone/CommandFLogin';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
 import DeckStudio from '../components/commandf/DeckStudio';
+import SpendPanel from '../components/commandf/SpendPanel';
 import { MOCK_DECK_STATUS, MOCK_OUTLINE } from './fixtures';
 
 // Mock user identity for the dev harness (matches the stubbed getSession in main.tsx).
@@ -32,6 +33,17 @@ export function HarnessRoot({ view }: { view: string }) {
               approvedPlan={MOCK_OUTLINE.plan}
               seed={MOCK_DECK_STATUS}
             />
+          </div>
+        </ActionistStrategyProvider>
+      </AuthProvider>
+    );
+  }
+  if (view === 'spend') {
+    return (
+      <AuthProvider>
+        <ActionistStrategyProvider>
+          <div className="h-screen flex flex-col bg-bg-primary overflow-hidden">
+            <SpendPanel onBack={() => console.info('[harness] back')} />
           </div>
         </ActionistStrategyProvider>
       </AuthProvider>

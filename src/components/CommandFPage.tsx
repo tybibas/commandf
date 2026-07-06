@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus, Database, Upload, Presentation, Table2, MessageSquare, Wand2, Loader2,
-  Search, GitCompare, Quote, Layers,
+  Search, GitCompare, Quote, Layers, Coins,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
@@ -28,6 +28,7 @@ import Landing, { type QuickAction, type ExampleCard } from './commandf/Landing'
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
 import DeckStudio from './commandf/DeckStudio';
+import SpendPanel from './commandf/SpendPanel';
 import SurveySurface from './commandf/SurveySurface';
 import KnowledgePanel from './commandf/KnowledgePanel';
 import CommandPalette, { type PaletteCommand } from './commandf/CommandPalette';
@@ -57,7 +58,7 @@ const PROMPT_ICP = 'What ICP and proof points did we lead with for a new client 
 // comparison after an answer with sources lands.
 const PROMPT_COMPARE_SOURCES = 'Compare the engagements cited above side by side: what patterns repeat?';
 
-type Surface = 'home' | 'chat' | 'deck' | 'survey' | 'deckstudio';
+type Surface = 'home' | 'chat' | 'deck' | 'survey' | 'deckstudio' | 'spend';
 
 function greetingForNow(): string {
   // Anchor to Pacific time regardless of the viewer's local zone, so the
@@ -560,6 +561,7 @@ export function CommandFPage({
     { id: 'new', label: 'New chat', group: 'Actions', icon: Plus, keywords: 'start reset thread', run: newChat },
     { id: 'knowledge', label: 'Open knowledge base', group: 'Actions', icon: Database, hint: docs ? docs.toLocaleString() : undefined, keywords: 'documents sources upload drive', run: () => setShowKnowledge(true) },
     { id: 'deck', label: 'Build a deck', group: 'Actions', icon: Presentation, hint: 'PPTX', keywords: 'presentation slides pptx', run: () => setSurface('deck') },
+    { id: 'spend', label: 'View spend', group: 'Actions', icon: Coins, keywords: 'cost usage anthropic budget ledger spend', run: () => setSurface('spend') },
     { id: 'survey', label: 'Survey compendium', group: 'Actions', icon: Table2, hint: 'XLSX', keywords: 'spreadsheet xlsx', run: () => setSurface('survey') },
     ...(deckStudioSeed
       ? [{ id: 'deckstudio', label: 'Edit in deck studio', group: 'Actions', icon: Layers, keywords: 'edit ops chat canvas', run: () => setSurface('deckstudio') } as PaletteCommand]
@@ -709,6 +711,8 @@ export function CommandFPage({
             clientSlug={activeContext}
             sessionId={sessionId}
           />
+        ) : surface === 'spend' ? (
+          <SpendPanel onBack={() => setSurface('home')} />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (
