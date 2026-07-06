@@ -87,12 +87,12 @@ export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group:
   return (
     <div
       data-cite={group.n ?? undefined}
-      className={`group relative px-3.5 py-2.5 transition-all cite-target ${highlighted ? 'is-cited bg-brand-soft ring-1 ring-inset ring-brand' : ''}`}
-      style={{ transitionDuration: 'var(--motion-duration-slow)' }}
+      className={`group relative px-3.5 py-2.5 transition-all duration-fast cite-target hover:border-border-hover hover:-translate-y-px motion-reduce:hover:translate-y-0 ${highlighted ? 'is-cited bg-source-soft ring-1 ring-inset ring-source' : ''}`}
+      style={{ transitionDuration: 'var(--motion-duration-base)' }}
     >
       <div className="flex items-center gap-3">
         {/* Citation index badge */}
-        <span className="shrink-0 inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-control border border-border-light bg-bg-elevated font-num text-micro font-medium text-text-secondary tabular-nums group-hover:border-border-hover transition-colors">
+        <span className="shrink-0 inline-flex items-center justify-center h-5 min-w-5 px-1 rounded-control border border-border-light bg-bg-elevated font-mono text-micro font-medium text-text-secondary tabular-nums group-hover:border-border-hover transition-colors">
           {group.n ?? '·'}
         </span>
 
@@ -100,7 +100,7 @@ export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group:
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="flex-1 min-w-0 truncate text-body font-medium text-text-primary leading-snug">
+            <span className="flex-1 min-w-0 truncate text-body-sm font-medium text-text-primary leading-snug">
               {parsed.client || parsed.title}
             </span>
             {parsed.ext && (
@@ -131,7 +131,7 @@ export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group:
           )}
         </div>
 
-        {band && <span className="shrink-0 text-micro text-text-muted">{band} relevance</span>}
+        {band && <span className={`shrink-0 text-micro ${band === 'High' ? 'text-verified' : 'text-text-muted'}`}>{band} relevance</span>}
 
         {onReuse && <ReuseMenu source={best} onReuse={onReuse} flipUp={flipMenuUp} />}
 
@@ -161,7 +161,7 @@ export function SourceCard({ group, onReuse, highlighted, flipMenuUp }: { group:
             return (
               <li key={p.chunk_index ?? i} className="text-caption text-text-secondary leading-relaxed">
                 {typeof p.chunk_index === 'number' && (
-                  <span className="mr-1.5 font-num text-micro text-text-muted tabular-nums">#{p.chunk_index}</span>
+                  <span className="mr-1.5 font-mono text-micro text-text-muted tabular-nums">#{p.chunk_index}</span>
                 )}
                 <span className="line-clamp-3">{text}</span>
               </li>
@@ -198,12 +198,10 @@ export function SourceList({
 
   return (
     <div className="mt-5 pt-4 hairline-t">
-      <p className="eyebrow text-text-muted mb-2.5 flex items-center gap-1.5">
+      <p className="text-caption text-text-muted mb-2.5 flex items-center gap-1.5">
         <span>Sources</span>
-        <span className="font-num tabular-nums text-text-muted/70">{groups.length}</span>
-        <span className="text-text-muted/60">
-          {groups.length === 1 ? 'document from the firm’s work' : 'documents from the firm’s work'}
-        </span>
+        <span className="font-mono tabular-nums">{groups.length}</span>
+        <span>{groups.length === 1 ? "document from the firm's work" : "documents from the firm's work"}</span>
       </p>
       {/* No `overflow-hidden` here: it clipped the LAST source's reuse menu
           (it opens downward past the container edge). Corners are instead rounded

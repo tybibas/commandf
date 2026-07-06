@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
-import { ClientStrategyProvider } from '../contexts/ClientStrategyContext';
+import { ActionistStrategyProvider } from '../contexts/ActionistStrategyContext';
 import { isSupabaseConfigured } from '../lib/supabase';
 import { CommandFPage } from '../components/CommandFPage';
 import { SetPasswordScreen } from '../components/SetPasswordScreen';
@@ -35,7 +35,7 @@ function Gate() {
     return (
       <FullScreen>
         <div className="flex flex-col items-center gap-4">
-          <span className="font-serif text-[22px] tracking-[-0.015em] text-text-primary leading-none">Command F</span>
+          <span className="font-display text-xl tracking-[-0.015em] text-text-primary leading-none">Command F</span>
           <span className="w-4 h-4 border-2 border-text-muted border-t-transparent rounded-full animate-spin" />
         </div>
       </FullScreen>
@@ -78,7 +78,7 @@ export default function StandaloneApp() {
     return (
       <FullScreen>
         <div className="max-w-md text-center">
-          <span className="font-serif text-[24px] tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
+          <span className="font-display text-xl tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
           <h1 className="text-lg font-medium text-text-primary mb-1">Not configured</h1>
           <p className="text-body text-text-secondary">Supabase environment variables are missing for this deployment.</p>
         </div>
@@ -87,9 +87,9 @@ export default function StandaloneApp() {
   }
   return (
     <AuthProvider>
-      <ClientStrategyProvider>
+      <ActionistStrategyProvider>
         <Gate />
-      </ClientStrategyProvider>
+      </ActionistStrategyProvider>
     </AuthProvider>
   );
 }

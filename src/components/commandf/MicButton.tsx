@@ -12,13 +12,13 @@ export default function MicButton({
   const title = !supported
     ? 'Voice input needs Chrome or Edge'
     : error === 'not-allowed'
-      ? 'Microphone blocked — enable it in your browser'
+      ? 'Microphone blocked. Enable it in your browser.'
       : isListening ? 'Stop dictation' : 'Dictate';
 
   return (
     <div className="relative">
       {isListening && (
-        <span className="absolute inset-0 rounded-full bg-brand/25 animate-ping motion-reduce:hidden" aria-hidden />
+        <span className="absolute inset-0 rounded-full bg-accent/25 animate-ping motion-reduce:hidden" aria-hidden />
       )}
       <button
         type="button"
@@ -31,7 +31,7 @@ export default function MicButton({
           'relative w-8 h-8 flex items-center justify-center rounded-full border transition-colors',
           MOTION, FOCUS,
           isListening
-            ? 'border-brand/40 bg-brand/15 text-brand-ink'
+            ? 'border-accent/40 bg-accent/15 text-accent-ink'
             : error === 'not-allowed'
               ? 'border-error/30 text-error'
               : 'border-border-light text-text-secondary hover:text-text-primary hover:bg-bg-tertiary',

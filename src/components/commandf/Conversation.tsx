@@ -44,22 +44,24 @@ function AssistantMessage({
   return (
     <div ref={rootRef} className="animate-slide-up">
       {m.error ? (
-        <span className="flex items-start gap-2 text-base leading-relaxed text-text-primary">
+        <span className="flex items-start gap-2 text-body leading-relaxed text-text-primary">
           <AlertCircle className="w-4 h-4 text-error shrink-0 mt-1" aria-hidden />
           <span className="whitespace-pre-wrap">{m.content}</span>
         </span>
       ) : (
         <>
           {/* Attribution marker — quiet left-aligned label mirrors the right-aligned user bubble */}
-          <div className="flex items-center gap-1.5 mb-2 eyebrow text-text-muted">
+          <div className="flex items-center gap-1.5 mb-2 text-caption text-text-muted">
             <Sparkles className="w-3 h-3" strokeWidth={1.75} aria-hidden />
             <span>Command F</span>
           </div>
-          <CommandFMarkdown
-            content={m.content}
-            onCiteClick={hasSources ? onCiteClick : undefined}
-            citable={citable}
-          />
+          <div className="max-w-[72ch]">
+            <CommandFMarkdown
+              content={m.content}
+              onCiteClick={hasSources ? onCiteClick : undefined}
+              citable={citable}
+            />
+          </div>
         </>
       )}
       {hasSources && (
@@ -148,7 +150,7 @@ function MessageRow({ m, onReuse, onBuildDeck }: { m: Message; onReuse?: (prompt
 }
 
 /** The scrolling transcript. Auto-sticks to the bottom on new content. */
-export default function Conversation({ messages, sending, steps, onReuse, onBuildDeck }: { messages: Message[]; sending: boolean; steps?: ThinkingStep[]; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
+export default function Conversation({ messages, sending, steps, streamDraft, onReuse, onBuildDeck }: { messages: Message[]; sending: boolean; steps?: ThinkingStep[]; streamDraft?: string; onReuse?: (prompt: string) => void; onBuildDeck?: () => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -159,18 +161,29 @@ export default function Conversation({ messages, sending, steps, onReuse, onBuil
         behavior: reduce ? 'auto' : 'smooth',
       });
     });
-  }, [messages, sending, steps]);
+  }, [messages, sending, steps, streamDraft]);
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-8 scrollbar-thin">
       <div className="max-w-prose-tight mx-auto space-y-8">
         {messages.map((m, i) => (
-          <MessageRow key={`${m.role}-${i}-${m.content.length}`} m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
+          <MessageRow key={m._key ?? `${m.role}-${i}`} m={m} onReuse={onReuse} onBuildDeck={onBuildDeck} />
         ))}
         {sending && (
-          <div className="flex justify-start">
-            <ThinkingIndicator steps={steps} />
-          </div>
+          streamDraft ? (
+            // Synthesis turn is streaming — show draft bubble; ThinkingIndicator
+            // is hidden so the draft replaces it naturally. The draft is replaced
+            // by the final citation-normalized text when the 'done' event arrives.
+            <AssistantMessage
+              m={{ role: 'assistant', content: streamDraft, _key: 'stream-draft' }}
+              onReuse={onReuse}
+              onBuildDeck={onBuildDeck}
+            />
+          ) : (
+            <div className="flex justify-start">
+              <ThinkingIndicator steps={steps} />
+            </div>
+          )
         )}
       </div>
     </div>

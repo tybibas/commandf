@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   RefreshCw, Link2, FileText, UploadCloud, CheckCircle2, Loader2, Info, Cloud,
 } from 'lucide-react';
@@ -45,6 +45,8 @@ export default function KnowledgePanel({
   const [uploadMsg, setUploadMsg] = useState('');
   const [uploadChunks, setUploadChunks] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const doUpload = async (f: File | null) => {
     if (!f) return;
@@ -55,7 +57,9 @@ export default function KnowledgePanel({
       const deadline = Date.now() + 3 * 60_000; // 3-minute safety valve
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        if (!mountedRef.current) return;
         const s = await uploadDocumentStatus(file_id);
+        if (!mountedRef.current) return;
         if (s.status === 'complete') {
           setUploadChunks(typeof s.chunks_indexed === 'number' ? s.chunks_indexed : null);
           setUploadState('done');
@@ -66,6 +70,7 @@ export default function KnowledgePanel({
         await new Promise((r) => setTimeout(r, 2500));
       }
     } catch (e: any) {
+      if (!mountedRef.current) return;
       if (e instanceof EndpointPendingError) setUploadState('pending');
       else { setUploadState('error'); setUploadMsg(e?.message || 'Upload failed.'); }
     }
@@ -79,19 +84,19 @@ export default function KnowledgePanel({
         <div className="flex items-stretch divide-x divide-border-light rounded-surface border border-border-light overflow-hidden">
           <div className="flex-1 px-4 py-3">
             <p className="eyebrow text-text-muted mb-1">Documents</p>
-            <p className="font-num text-2xl tabular-nums leading-none text-text-primary">{fmtDocs(k?.doc_count)}</p>
+            <p className="font-mono text-2xl tabular-nums leading-none text-text-primary">{fmtDocs(k?.doc_count)}</p>
           </div>
           <div className="flex-1 px-4 py-3">
             <p className="eyebrow text-text-muted mb-1">Passages</p>
-            <p className="font-num text-2xl tabular-nums leading-none text-text-primary">{fmtChunks(k?.chunk_count)}</p>
+            <p className="font-mono text-2xl tabular-nums leading-none text-text-primary">{fmtChunks(k?.chunk_count)}</p>
           </div>
         </div>
         {countPending && (
           <p className="-mt-4 text-caption text-text-muted flex items-center gap-1.5">
             <Loader2 className="w-3 h-3 animate-spin" strokeWidth={2} aria-hidden />
             {k?.counts_stale
-              ? 'Exact counts are catching up while the corpus is indexing — the passage total is approximate for now.'
-              : 'Syncing the index count… if it doesn’t appear, the corpus is busy indexing — try Re-index in a moment.'}
+              ? 'Exact counts are catching up while the corpus is indexing. The passage total is approximate for now.'
+              : "Syncing the index count. If it doesn't appear, the corpus is busy indexing. Try Re-index in a moment."}
           </p>
         )}
 
@@ -151,8 +156,8 @@ export default function KnowledgePanel({
               <CheckCircle2 className="w-4 h-4 text-success" aria-hidden />
               <span className="text-body text-text-secondary">
                 {uploadChunks != null
-                  ? <>Added — {uploadChunks.toLocaleString()} passage{uploadChunks === 1 ? '' : 's'} indexed.</>
-                  : 'Uploaded — indexing in the background.'}
+                  ? <>Added: {uploadChunks.toLocaleString()} passage{uploadChunks === 1 ? '' : 's'} indexed.</>
+                  : 'Uploaded. Indexing in the background.'}
               </span>
             </div>
           )}
@@ -163,7 +168,7 @@ export default function KnowledgePanel({
                 <p className="text-caption leading-relaxed text-text-secondary">
                   <span className="font-medium text-text-primary">Upload is momentarily unavailable.</span>{' '}
                   Direct upload posts to <code className="font-mono text-micro bg-bg-tertiary rounded-control px-1 py-0.5">POST /upload</code>;
-                  if it isn’t responding, add files to the connected Drive and re-index instead.
+                  if it isn't responding, add files to the connected Drive and re-index instead.
                 </p>
               </div>
             </div>
@@ -195,7 +200,7 @@ export default function KnowledgePanel({
                 <div key={`${f.file_name}-${i}`} className="flex items-center gap-2.5 px-2 py-2 rounded-control hover:bg-bg-secondary transition-colors">
                   <FileText className="w-3.5 h-3.5 text-text-muted shrink-0" strokeWidth={1.5} aria-hidden />
                   <span className="flex-1 min-w-0 truncate text-caption text-text-secondary">{f.file_name}</span>
-                  <span className="shrink-0 font-num text-micro text-text-muted tabular-nums">{f.chunks}</span>
+                  <span className="shrink-0 font-mono text-micro text-text-muted tabular-nums">{f.chunks}</span>
                 </div>
               ))}
             </div>

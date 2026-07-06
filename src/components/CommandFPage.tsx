@@ -4,18 +4,19 @@ import {
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
-import { useClientStrategy } from '../contexts/ClientStrategyContext';
+import { useClientStrategy } from '../contexts/ActionistStrategyContext';
 
 import {
   COMMANDF_URL, type Message, type Session, type ModelOption, type Briefing, type SourcesStatus,
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChatStream, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentAuth, NotSignedInError,
-  uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt,
+  uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt, StreamAbortedError,
 } from './commandf/api';
 import { useDictation } from '../hooks/useDictation';
 import MicButton from './commandf/MicButton';
 import {
   readSessionsCache, writeSessionsCache,
+  readBriefingCache, writeBriefingCache,
   readDraft, writeDraft, readActiveSession, writeActiveSession,
 } from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
@@ -31,6 +32,12 @@ import CommandPalette, { type PaletteCommand } from './commandf/CommandPalette';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
+
+let _msgKeySeq = 0;
+/** Stamp a stable React key onto a message at insertion time. */
+const mkMsg = (m: Omit<Message, '_key'>): Message => ({ ...m, _key: `m-${++_msgKeySeq}` });
+/** Stamp stable keys on a batch of messages (e.g. loaded history). */
+const tagMsgs = (msgs: Message[]): Message[] => msgs.map((m) => m._key ? m : mkMsg(m));
 
 // Curated quick-start prompts (no backing data — intentionally authored).
 const PROMPT_ICP = 'Summarise our ICP and positioning for a new client pitch';
@@ -89,8 +96,16 @@ export function CommandFPage({
   const [deckSeed, setDeckSeed] = useState('');
   const [pinnedFileIds, setPinnedFileIds] = useState<string[]>([]);  // source-pinning for deck build
   const [steps, setSteps] = useState<ThinkingStep[]>([]);  // live agent progress
+  // Accumulated text from delta SSE events — shown as a draft assistant bubble
+  // while the synthesis turn streams. Cleared (replaced) on the done event so
+  // the final citation-normalized text takes over. Empty string = no draft bubble.
+  const [streamDraft, setStreamDraft] = useState('');
   const [surface, setSurface] = useState<Surface>('home');
   const [focusKey, setFocusKey] = useState(0);
+  // AbortController for the in-flight sendChatStream call; null when idle.
+  const streamCtrlRef = useRef<AbortController | null>(null);
+  // Tracks component mount state; polling loops check this to stop on unmount.
+  const mountedRef = useRef(true);
 
   const { activeContext } = useClientStrategy();
   const isActionist = activeContext === 'actionist';
@@ -109,18 +124,20 @@ export function CommandFPage({
       const deadline = Date.now() + 3 * 60_000;
       // eslint-disable-next-line no-constant-condition
       while (true) {
+        if (!mountedRef.current) return;
         const s = await uploadDocumentStatus(file_id);
+        if (!mountedRef.current) return;
         if (s.status === 'complete') {
           const n = typeof s.chunks_indexed === 'number' ? s.chunks_indexed : null;
-          toast.updateToast(id, n != null ? `Added ${f.name} — ${n.toLocaleString()} passage${n === 1 ? '' : 's'} indexed. Ask me about it.` : `Added ${f.name} — indexed. Ask me about it.`, 'success');
+          toast.updateToast(id, n != null ? `Added ${f.name}: ${n.toLocaleString()} passage${n === 1 ? '' : 's'} indexed. Ask me about it.` : `Added ${f.name}, now indexed. Ask me about it.`, 'success');
           return;
         }
         if (s.status === 'error') { toast.updateToast(id, s.error || 'Indexing failed.', 'error'); return; }
-        if (Date.now() > deadline) { toast.updateToast(id, `${f.name} is still indexing — it'll be searchable shortly.`, 'success'); return; }
+        if (Date.now() > deadline) { toast.updateToast(id, `${f.name} is still indexing. It'll be searchable shortly.`, 'success'); return; }
         await new Promise((r) => setTimeout(r, 2500));
       }
     } catch (e: any) {
-      toast.updateToast(id, e instanceof EndpointPendingError ? 'Upload is momentarily unavailable — try the knowledge panel.' : (e?.message || 'Upload failed.'), 'error');
+      toast.updateToast(id, e instanceof EndpointPendingError ? 'Upload is momentarily unavailable. Try the knowledge panel.' : (e?.message || 'Upload failed.'), 'error');
     }
   };
   // Voice dictation feeds the composer live; "Optimize" rewrites the notes in place.
@@ -140,7 +157,7 @@ export function CommandFPage({
       const { optimized } = await optimizePrompt(text);
       if (optimized && optimized.trim()) { setInput(optimized.trim()); setFocusKey((k) => k + 1); }
     } catch {
-      toast.error('Could not optimize your prompt — try again.');
+      toast.error('Could not optimize your prompt. Try again.');
     } finally {
       setOptimizing(false);
     }
@@ -149,8 +166,14 @@ export function CommandFPage({
   const syncPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Stable user id for keying the local sessions cache (avoids stale closures).
   const userIdRef = useRef<string | null>(null);
+  // Latest session the user intends to view — read (not state) so in-flight
+  // history fetches can detect they are stale without setState-updater reads.
+  const activeSessionRef = useRef<string | null>(null);
   // Restore the draft/active-thread exactly once, after the uid is known.
   const didRestoreRef = useRef(false);
+
+  // Flip mountedRef on unmount so polling loops in dropUpload can exit cleanly.
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   // Persist the composer draft and the active thread so a tab close / reload /
   // minimize never loses progress. Writes are keyed by the signed-in operator.
@@ -161,15 +184,22 @@ export function CommandFPage({
 
   const loadBriefing = useCallback(async (cc: string) => {
     // The briefing includes the corpus count, whose RPC can time out under heavy
-    // DB write load. fetchBriefing swallows that to null; retry once after a short
-    // backoff so a transient timeout self-heals (the KB count fills in) without
-    // the user having to reload. Never throws.
-    let b = await fetchBriefing(cc);
-    if (!b) {
-      await new Promise((r) => setTimeout(r, 4000));
-      b = await fetchBriefing(cc);
+    // DB write load (e.g. an index build). fetchBriefing swallows that to null;
+    // retry with backoff so a transient bad window self-heals (the KB count
+    // fills in) without the user having to reload. Never throws.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 5000));
+      const b = await fetchBriefing(cc);
+      if (b) {
+        setBriefing(b);
+        // Cache only the default view (cc === '') — a client-filtered briefing
+        // must never overwrite the all-clients default that a fresh tab reads.
+        if (cc === '') writeBriefingCache(userIdRef.current, b);
+        return;
+      }
     }
-    if (b) setBriefing(b);
+    // All attempts failed — leave briefing as-is; the KB panel already shows
+    // its honest "Syncing…" state instead of a fake 0.
   }, []);
 
   // Refetch the authoritative list and reconcile the local cache. CRITICAL: only
@@ -197,7 +227,7 @@ export function CommandFPage({
     // ONE local getSession() read for both token + uid (was two back-to-back).
     const { token, uid } = await currentAuth();
     if (!token) {
-      toast.error('Not signed in — please re-authenticate.');
+      toast.error('Not signed in. Please re-authenticate.');
       setLoading(false);
       return;
     }
@@ -206,6 +236,11 @@ export function CommandFPage({
     userIdRef.current = uid;
     const cached = readSessionsCache(uid);
     if (cached.length) setSessions(cached);
+    // Seed the briefing (KB doc count etc.) from the local cache so the
+    // Knowledge panel shows real numbers instantly on a fresh tab / new profile,
+    // before the live fetchBriefing response arrives (stale-while-revalidate).
+    const cachedBriefing = readBriefingCache(uid);
+    if (cachedBriefing) setBriefing(cachedBriefing);
     // Restore the unsent composer draft and the last open thread (survives tab
     // close / reload). Guarded so it runs once and never clobbers live typing.
     if (!didRestoreRef.current) {
@@ -214,11 +249,12 @@ export function CommandFPage({
       if (draft) setInput((cur) => cur || draft);
       const lastSid = readActiveSession(uid);
       if (lastSid) {
+        activeSessionRef.current = lastSid;
         setSessionId(lastSid);
         setSurface('chat');
         setHistoryError(false);
         fetchHistory(lastSid)
-          .then((h) => setMessages(h))
+          .then((h) => { if (activeSessionRef.current === lastSid) setMessages(tagMsgs(h)); })
           // On failure keep the thread open with a retry rather than silently
           // bouncing home (which reads as "the conversation vanished"). Only a
           // clean load with no messages stays; an error/timeout shows the banner.
@@ -308,14 +344,20 @@ export function CommandFPage({
   }, []);
 
   const openSession = async (sid: string) => {
+    activeSessionRef.current = sid;
     setSessionId(sid); setSurface('chat'); setHistoryError(false);
     try {
-      setMessages(await fetchHistory(sid));
+      const msgs = await fetchHistory(sid);
+      // Staleness guard: discard results if the user switched to a different
+      // session while this fetch was in-flight (fast A→B click).
+      if (activeSessionRef.current === sid) setMessages(tagMsgs(msgs));
     } catch (e: any) {
       // Do NOT blank the thread on failure — leave what's there and surface a
       // retry. A timeout/error must never read as "this conversation is empty".
-      setHistoryError(true);
-      toast.error(e?.message || 'Could not load conversation.');
+      if (activeSessionRef.current === sid) {
+        setHistoryError(true);
+        toast.error(e?.message || 'Could not load conversation.');
+      }
     }
   };
 
@@ -323,31 +365,49 @@ export function CommandFPage({
   const retryHistory = useCallback(async () => {
     if (!sessionId) return;
     setHistoryError(false);
-    try { setMessages(await fetchHistory(sessionId)); }
+    try { setMessages(tagMsgs(await fetchHistory(sessionId))); }
     catch { setHistoryError(true); }
   }, [sessionId]);
 
-  const newChat = () => { setSessionId(null); setMessages([]); setSurface('home'); setHistoryError(false); setFocusKey((k) => k + 1); };
+  const newChat = () => { activeSessionRef.current = null; setSessionId(null); setMessages([]); setSurface('home'); setHistoryError(false); setFocusKey((k) => k + 1); };
+
+  const cancelStream = () => {
+    streamCtrlRef.current?.abort();
+  };
 
   const sendMessage = async (text: string) => {
     const msg = text.trim();
     if (!msg || sending || notConfigured) return;
     setInput('');
     setSurface('chat');
-    setMessages((prev) => [...prev, { role: 'user', content: msg }]);
+    setMessages((prev) => [...prev, mkMsg({ role: 'user', content: msg })]);
     setSending(true);
     setSteps([]);
+    setStreamDraft('');
+    const ctrl = new AbortController();
+    streamCtrlRef.current = ctrl;
     try {
-      // Streaming: live step-progress feeds the thinking indicator. Resolves with
-      // the final answer even if a proxy buffers the events (steps just arrive at
-      // the end). No auto-retry on error — that would double-charge the query.
-      const data = await sendChatStream(msg, model, sessionId, (evt) =>
-        setSteps((prev) => [...prev, {
-          phase: evt.phase, step: evt.step, label: evt.label, tool: evt.tool, count: evt.count,
-        } as ThinkingStep]));
+      // Streaming: live step-progress feeds the thinking indicator; delta events
+      // stream the synthesis turn's text into a draft bubble. Resolves with the
+      // final answer (citation-normalized); the draft is replaced by the final.
+      // No auto-retry on error — that would double-charge the query.
+      const data = await sendChatStream(
+        msg, model, sessionId,
+        (evt) => {
+          // A new tool round started: any streamed text so far was that turn's
+          // preamble, not the answer — clear the draft so it never lingers.
+          setStreamDraft('');
+          setSteps((prev) => [...prev, {
+            phase: evt.phase, step: evt.step, label: evt.label, tool: evt.tool, count: evt.count,
+          } as ThinkingStep]);
+        },
+        ctrl.signal,
+        (text) => setStreamDraft((prev) => prev + text),
+      );
       if (data.session_id && !sessionId) {
         // New thread — optimistically insert it at the top of the rail so it
         // appears instantly (title = first message), then reconcile with server.
+        activeSessionRef.current = data.session_id;
         setSessionId(data.session_id);
         setSessions((prev) => [
           { id: data.session_id!, title: msg.slice(0, 60), updated_at: new Date().toISOString() },
@@ -355,14 +415,24 @@ export function CommandFPage({
         ]);
         loadSessions();
       }
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.response, sources: data.sources || [] }]);
+      setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: data.response, sources: data.sources || [] })]);
     } catch (e: any) {
-      const m = e instanceof NotSignedInError ? e.message : (e?.message || 'Something went wrong.');
-      toast.error(m);
-      setMessages((prev) => [...prev, { role: 'assistant', content: m, error: true }]);
+      if (e instanceof StreamAbortedError) {
+        // Cancelled by user — brief toast only, no inline bubble.
+        toast.error('Response cancelled.');
+      } else if (e instanceof NotSignedInError) {
+        // Auth error — toast only (no inline bubble, since the session is broken).
+        toast.error(e.message);
+      } else {
+        // Stream failure — inline error bubble is the persistent surface; no toast.
+        const m = e?.message || 'Something went wrong.';
+        setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: m, error: true })]);
+      }
     } finally {
+      streamCtrlRef.current = null;
       setSending(false);
       setSteps([]);
+      setStreamDraft('');
     }
   };
 
@@ -436,7 +506,7 @@ export function CommandFPage({
     return (
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="max-w-md text-center">
-          <span className="font-serif text-[24px] tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
+          <span className="font-display text-xl font-light tracking-[-0.015em] text-text-primary leading-none block mb-3">Command F</span>
           <h2 className="text-lg font-medium text-text-primary mb-1">Not configured</h2>
           <p className="text-body text-text-secondary">
             Set <code className="font-mono text-caption">VITE_MODAL_COMMANDF_URL</code> in the dashboard environment to enable it.
@@ -518,11 +588,11 @@ export function CommandFPage({
         onClick={optimize}
         disabled={!input.trim() || optimizing || dictation.isListening}
         className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-pill border border-border-light text-caption text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-40 disabled:pointer-events-none`}
-        title="Clean up my prompt — restructure your notes into a sharp, well-formed prompt before sending"
+        title="Clean up my prompt: restructure your notes into a sharp, well-formed prompt before sending"
       >
         {optimizing
           ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" aria-hidden />
-          : <Wand2 className="w-3.5 h-3.5 text-brand-ink" strokeWidth={1.75} aria-hidden />}
+          : <Wand2 className="w-3.5 h-3.5 text-accent-ink" strokeWidth={1.75} aria-hidden />}
         {optimizing ? 'Optimizing…' : 'Optimize'}
       </button>
     </div>
@@ -534,6 +604,7 @@ export function CommandFPage({
       onChange={setInput}
       onSubmit={() => sendMessage(input)}
       sending={sending}
+      onCancel={cancelStream}
       focusKey={focusKey}
       placeholder={surface === 'chat' ? 'Ask a follow-up…' : "Ask the firm's memory…"}
       models={models}
@@ -575,10 +646,10 @@ export function CommandFPage({
         onDrop={(e) => { if (dragDepth > 0) { e.preventDefault(); setDragDepth(0); const f = e.dataTransfer.files?.[0]; if (f) dropUpload(f); } }}
       >
         {dragDepth > 0 && (surface === 'home' || surface === 'chat') && (
-          <div className="absolute inset-3 z-30 rounded-2xl border-2 border-dashed border-brand/60 bg-bg-primary/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-fade-in">
-            <Upload className="w-8 h-8 text-brand-ink mb-2" strokeWidth={1.5} aria-hidden />
+          <div className="absolute inset-3 z-30 rounded-card border-2 border-dashed border-accent/60 bg-bg-primary/80 backdrop-blur-sm flex flex-col items-center justify-center pointer-events-none animate-fade-in">
+            <Upload className="w-8 h-8 text-accent-ink mb-2" strokeWidth={1.5} aria-hidden />
             <p className="text-body font-medium text-text-primary">Drop to add to your knowledge base</p>
-            <p className="text-caption text-text-muted mt-1">PDF, DOCX, or PPTX — indexed and searchable in chat</p>
+            <p className="text-caption text-text-muted mt-1">PDF, DOCX, or PPTX. Indexed and searchable in chat.</p>
           </div>
         )}
         {surface === 'deck' ? (
@@ -589,7 +660,7 @@ export function CommandFPage({
           <>
             {historyError && (
               <div className="mx-6 mt-4 shrink-0 flex items-center justify-between gap-3 rounded-surface border border-border-light bg-bg-secondary px-4 py-2.5 text-caption text-text-secondary animate-fade-in">
-                <span>Couldn't load this conversation — it may be a temporary connection issue.</span>
+                <span>Couldn't load this conversation. It may be a temporary connection issue.</span>
                 <button
                   type="button"
                   onClick={retryHistory}
@@ -599,7 +670,7 @@ export function CommandFPage({
                 </button>
               </div>
             )}
-            <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
+            <Conversation messages={messages} sending={sending} steps={sending ? steps : undefined} streamDraft={streamDraft || undefined} onReuse={prefillComposer} onBuildDeck={buildDeckFromChat} />
             <div className="px-6 pb-6 pt-3 shrink-0">
               <div className="max-w-2xl mx-auto">{composer}</div>
             </div>

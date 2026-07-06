@@ -63,7 +63,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
   const avatar = (
     <span
       aria-hidden
-      className="shrink-0 w-7 h-7 rounded-full bg-accent-primary text-bg-primary flex items-center justify-center text-[11px] font-semibold leading-none select-none"
+      className="shrink-0 w-7 h-7 rounded-full bg-structure text-structure-ink flex items-center justify-center text-micro font-semibold leading-none select-none"
     >
       {initial}
     </span>
@@ -77,7 +77,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
           type="button"
           onClick={() => setOpen((v) => !v)}
           aria-label="Account menu"
-          title={`${displayName} — click for options`}
+          title={`${displayName}: click for options`}
           aria-expanded={open}
           aria-haspopup="menu"
           className={`inline-flex items-center justify-center w-9 h-9 rounded-control hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
@@ -90,7 +90,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
           <div
             ref={menuRef}
             role="menu"
-            className="absolute bottom-0 left-full ml-2 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-dark-sm py-1 animate-fade-in"
+            className="absolute bottom-0 left-full ml-2 z-50 w-52 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
           >
             <div className="px-3 py-2 border-b border-border-light">
               <p className="text-body font-medium text-text-primary truncate">{displayName}</p>
@@ -140,7 +140,7 @@ function AccountBar({ collapsed, userName, userEmail, planLabel, onSignOut }: Ac
         <div
           ref={menuRef}
           role="menu"
-          className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-surface bg-bg-elevated border border-border shadow-dark-sm py-1 animate-fade-in"
+          className="absolute bottom-full left-0 right-0 mb-1 z-50 rounded-surface bg-bg-elevated border border-border shadow-float py-1 animate-fade-in"
         >
           <button
             type="button"
@@ -198,7 +198,7 @@ export default function Sidebar({
       {/* ── Header: wordmark + collapse toggle ─────────────────────────── */}
       <div className={`flex items-center h-14 shrink-0 ${collapsed ? 'justify-center px-0' : 'justify-between px-4'}`}>
         {!collapsed && (
-          <span className="font-outfit font-semibold text-[15px] leading-none text-text-primary tracking-tight select-none">
+          <span className="font-display font-normal text-xl text-text-primary select-none">
             Command&nbsp;F
           </span>
         )}
@@ -242,7 +242,7 @@ export default function Sidebar({
             <>
               <span className="flex-1 text-left text-body truncate">Knowledge base</span>
               {docCount > 0 && (
-                <span className="shrink-0 text-micro tabular-nums text-text-muted bg-bg-tertiary px-1.5 py-0.5 rounded-sm font-medium">{docCount.toLocaleString()}</span>
+                <span className="shrink-0 font-mono text-micro tabular-nums text-text-secondary bg-bg-tertiary px-1.5 py-0.5 rounded-sm">{docCount.toLocaleString()}</span>
               )}
             </>
           )}
@@ -252,7 +252,7 @@ export default function Sidebar({
       {/* ── Recent sessions ────────────────────────────────────────────── */}
       <div className="flex-1 min-h-0 flex flex-col">
         {!collapsed && (
-          <p className="eyebrow text-text-muted px-4 pt-2 pb-1 shrink-0">Recent</p>
+          <p className="text-caption text-text-muted px-4 pt-2 pb-1 shrink-0">Recent</p>
         )}
         <nav
           className="flex-1 min-h-0 overflow-y-auto scrollbar-thin px-2"
@@ -285,7 +285,7 @@ export default function Sidebar({
               return (
                 <div key={s.id} className="group/row relative">
                   {active && !collapsed && (
-                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-brand" aria-hidden />
+                    <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-accent" aria-hidden />
                   )}
                   <button
                     type="button"
@@ -295,11 +295,18 @@ export default function Sidebar({
                     className={`w-full flex items-center rounded-control transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'pl-3 pr-8 h-[42px] text-left'} ${active ? 'bg-bg-tertiary text-text-primary' : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}`}
                   >
                     {collapsed
-                      ? <MessageSquare className="w-4 h-4 shrink-0" strokeWidth={1.5} aria-hidden />
+                      ? (
+                        <span className={`relative inline-flex items-center justify-center w-7 h-7 rounded-control transition-colors ${active ? 'bg-bg-tertiary' : ''}`}>
+                          {active && (
+                            <span className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-0.5 rounded-full bg-accent -translate-x-1" aria-hidden />
+                          )}
+                          <MessageSquare className="w-4 h-4 shrink-0" strokeWidth={1.5} aria-hidden />
+                        </span>
+                      )
                       : (
                         <span className="flex-1 min-w-0 flex flex-col leading-tight">
-                          <span className={`truncate text-body ${active ? 'font-medium' : ''}`}>{s.title || 'Untitled'}</span>
-                          <span className="truncate text-micro text-text-muted mt-0.5">{timeAgo(s.updated_at)}</span>
+                          <span className={`truncate text-body-sm ${active ? 'font-medium' : ''}`}>{s.title || 'Untitled'}</span>
+                          <span className="truncate font-mono text-micro text-text-muted mt-0.5">{timeAgo(s.updated_at)}</span>
                         </span>
                       )
                     }
@@ -326,9 +333,9 @@ export default function Sidebar({
             type="button"
             onClick={onRetrySessions}
             className={`shrink-0 mx-2 mb-1 inline-flex items-center gap-1.5 px-2 py-1 rounded-control text-micro text-text-muted hover:text-text-secondary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
-            title="Couldn't refresh — showing your last-known list. Click to retry."
+            title="Couldn't refresh. Showing your last-known list. Click to retry."
           >
-            Couldn't refresh — retry
+            Couldn't refresh. Retry
           </button>
         )}
       </div>

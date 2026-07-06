@@ -31,6 +31,8 @@ export type Message = {
   content: string;
   sources?: Source[];
   error?: boolean;
+  /** Stable React key assigned by the UI at insertion time. Never from the backend. */
+  _key?: string;
 };
 
 export type Session = { id: string; title: string; updated_at: string };
@@ -161,9 +163,16 @@ export class RequestTimeoutError extends Error {
 // Default network budgets. These bound EVERY query so a slow/degraded backend
 // (e.g. Postgres statement-timeout 57014 under bulk-ingest load) can never
 // produce an infinite spinner. They degrade to a typed error, not empty data.
-const T_FAST = 6000;    // lists / lightweight reads (sessions, models, status)
-const T_HISTORY = 8000; // a single conversation's messages
-const T_BRIEFING = 10000; // knowledge briefing (count RPC can be slow)
+// Budgets must survive the WORST cold path, not just a warm backend: a sleeping
+// Modal container adds up to ~30s to the first request, and /sessions makes two
+// sequential DB round-trips. At 6s, every fresh-profile sign-in during DB load
+// (e.g. an index build) looked like "all my chats/docs are gone" (2026-07-02
+// cross-profile incident).
+const T_FAST = 15000;    // lists / lightweight reads (sessions, models, status)
+const T_HISTORY = 15000; // a single conversation's messages
+const T_BRIEFING = 12000; // knowledge briefing (count RPC can be slow)
+const T_MUTATE = 20000;  // write operations: sync, delete, upload, optimize-prompt
+const T_GEN = 30000;     // generation submits and status polls (deck, survey, upload)
 
 /** fetch() with an AbortController-backed timeout. Rejects with
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
@@ -264,7 +273,7 @@ export async function fetchSessions(): Promise<LoadResult<Session[]>> {
   try {
     const url = requireUrl();
     const res = await fetchWithTimeout(
-      `${url}/sessions`, { headers: await authHeaders() }, T_FAST, 'Loading conversations',
+      `${url}/sessions`, { headers: await authHeaders(), cache: 'no-store' }, T_FAST, 'Loading conversations',
     );
     if (!res.ok) {
       if (res.status === 401) return { ok: false, error: new NotSignedInError() };
@@ -313,9 +322,11 @@ export async function fetchHistory(sessionId: string): Promise<Message[]> {
  * before sending. Cheap single-shot call on the backend (no RAG, no side effects). */
 export async function optimizePrompt(text: string): Promise<{ optimized: string }> {
   const url = requireUrl();
-  const res = await fetch(`${url}/optimize-prompt`, {
-    method: 'POST', headers: await authHeaders(), body: JSON.stringify({ text }),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/optimize-prompt`,
+    { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ text }) },
+    T_MUTATE, 'Optimizing prompt',
+  );
   return json<{ optimized: string }>(res);
 }
 
@@ -323,54 +334,103 @@ export async function sendChat(
   message: string, model: string, sessionId: string | null,
 ): Promise<ChatResponse> {
   const url = requireUrl();
-  const res = await fetch(`${url}/chat`, {
-    method: 'POST',
-    headers: await authHeaders(),
-    body: JSON.stringify({ message, model, session_id: sessionId }),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/chat`,
+    { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ message, model, session_id: sessionId }) },
+    T_MUTATE, 'Sending message',
+  );
   return json<ChatResponse>(res);
 }
 
-/** Streaming chat: invokes `onStep` per live progress event and resolves with the
- *  final answer. The backend runs to completion + persists regardless of the
- *  stream, so a closed tab never loses the answer (recovered via history on reopen). */
+/** Thrown when the caller aborts the stream via the returned controller. */
+export class StreamAbortedError extends Error {
+  constructor() { super('Stream cancelled.'); this.name = 'StreamAbortedError'; }
+}
+
+/** Streaming chat: invokes `onStep` per live progress event, `onDelta` per
+ *  streamed text chunk, and resolves with the final answer.
+ *
+ *  Delta events carry raw (marker-stripped) text as the model generates the
+ *  synthesis turn. The caller should display these in a draft bubble, then
+ *  replace the bubble content with the final `response` from the resolved
+ *  ChatResponse (which is the post-processed, citation-normalized version).
+ *
+ *  The backend runs to completion + persists regardless of the stream, so a
+ *  closed tab never loses the answer (recovered via history on reopen).
+ *
+ *  Pass an optional `signal` from the caller's AbortController; the function
+ *  also enforces a 90s idle timeout (reset on every incoming SSE event). */
 export async function sendChatStream(
   message: string, model: string | undefined, sessionId: string | null,
   onStep: (evt: { phase?: string; step?: number; label?: string; tool?: string; count?: number }) => void,
+  signal?: AbortSignal,
+  onDelta?: (text: string) => void,
 ): Promise<ChatResponse> {
+  const IDLE_MS = 90_000;
   const url = requireUrl();
-  const res = await fetch(`${url}/chat/stream`, {
-    method: 'POST',
-    headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, model, session_id: sessionId }),
-  });
-  if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`);
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  let final: ChatResponse | null = null;
-  for (;;) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split('\n\n');
-    buf = parts.pop() ?? '';
-    for (const p of parts) {
-      const line = p.split('\n').find((l) => l.startsWith('data: '));
-      if (!line) continue;
-      const evt = JSON.parse(line.slice(6));
-      if (evt.type === 'step') onStep(evt);
-      else if (evt.type === 'done') final = evt as ChatResponse;
-      else if (evt.type === 'error') throw new Error(evt.detail || 'chat failed');
+
+  // Internal controller handles the idle-timeout abort path.
+  const internalCtrl = new AbortController();
+  const combined = signal
+    ? (AbortSignal as any).any?.([signal, internalCtrl.signal]) ?? internalCtrl.signal
+    : internalCtrl.signal;
+
+  // Forward external cancellation into the internal controller so we can
+  // always cancel via internalCtrl.abort() regardless of which signal fired.
+  let externalAborted = false;
+  signal?.addEventListener('abort', () => { externalAborted = true; internalCtrl.abort(); });
+
+  let idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS);
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS); };
+
+  try {
+    const res = await fetch(`${url}/chat/stream`, {
+      method: 'POST',
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, model, session_id: sessionId }),
+      signal: combined,
+    });
+    if (!res.ok || !res.body) throw new Error(`chat failed (${res.status})`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let final: ChatResponse | null = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() ?? '';
+      for (const p of parts) {
+        const line = p.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const evt = JSON.parse(line.slice(6));
+        if (evt.type === 'step') onStep(evt);
+        else if (evt.type === 'delta') { resetIdle(); onDelta?.(evt.text ?? ''); }
+        else if (evt.type === 'done') final = evt as ChatResponse;
+        else if (evt.type === 'error') throw new Error(evt.detail || 'chat failed');
+      }
     }
+    if (!final) throw new Error('stream ended without an answer');
+    return final;
+  } catch (e: any) {
+    if (e?.name === 'AbortError' || internalCtrl.signal.aborted || externalAborted) {
+      throw new StreamAbortedError();
+    }
+    throw e;
+  } finally {
+    clearTimeout(idleTimer);
   }
-  if (!final) throw new Error('stream ended without an answer');
-  return final;
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
   const url = requireUrl();
-  await fetch(`${url}/sessions/${encodeURIComponent(sessionId)}`, { method: 'DELETE', headers: await authHeaders() });
+  await fetchWithTimeout(
+    `${url}/sessions/${encodeURIComponent(sessionId)}`,
+    { method: 'DELETE', headers: await authHeaders() },
+    T_MUTATE, 'Deleting session',
+  );
 }
 
 export async function fetchSourcesStatus(): Promise<SourcesStatus | null> {
@@ -387,14 +447,24 @@ export async function fetchSourcesStatus(): Promise<SourcesStatus | null> {
 
 export async function startSync(): Promise<void> {
   const url = requireUrl();
-  const res = await fetch(`${url}/sync`, { method: 'POST', headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/sync`,
+    { method: 'POST', headers: await authHeaders() },
+    T_MUTATE, 'Starting sync',
+  );
   if (!res.ok) throw new Error(await res.text().catch(() => 'Re-index failed.'));
 }
 
 export async function fetchSyncStatus(): Promise<SyncStatus | null> {
   const url = requireUrl();
-  return fetch(`${url}/sync/status`, { headers: await authHeaders() })
-    .then((r) => r.json()).catch(() => null);
+  try {
+    const res = await fetchWithTimeout(
+      `${url}/sync/status`, { headers: await authHeaders() }, T_FAST, 'Loading sync status',
+    );
+    return await res.json();
+  } catch {
+    return null;
+  }
 }
 
 /** Drive OAuth is a full-page redirect (token passed as a query param). */
@@ -413,7 +483,7 @@ async function postJob(path: string, body: BodyInit, isMultipart: boolean): Prom
   const token = await bearer();
   const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
   if (!isMultipart) headers['Content-Type'] = 'application/json';
-  const res = await fetch(`${url}${path}`, { method: 'POST', headers, body });
+  const res = await fetchWithTimeout(`${url}${path}`, { method: 'POST', headers, body }, T_GEN, path);
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError(path);
   return json<{ job_id: string }>(res);
 }
@@ -431,11 +501,11 @@ export async function generateDeckOutline(input: {
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
-  const res = await fetch(`${url}/generate-deck/outline`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(input),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/outline`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(input) },
+    T_GEN, 'Generating outline',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/outline');
   return json<DeckOutline>(res);
 }
@@ -472,18 +542,22 @@ export async function editDeckSlide(input: {
 }): Promise<JobStatus> {
   const url = requireUrl();
   const token = await bearer();
-  const res = await fetch(`${url}/generate-deck/edit-slide`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-    body: JSON.stringify(input),
-  });
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/edit-slide`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(input) },
+    T_GEN, 'Editing slide',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/edit-slide');
   return json<JobStatus>(res);
 }
 
 export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   const url = requireUrl();
-  const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/${encodeURIComponent(jobId)}/status`,
+    { headers: await authHeaders() },
+    T_GEN, 'Checking deck status',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck');
   return json<JobStatus>(res);
 }
@@ -506,7 +580,11 @@ export async function generateSurveyCompendium(file: File, title?: string): Prom
 
 export async function surveyCompendiumStatus(jobId: string): Promise<JobStatus> {
   const url = requireUrl();
-  const res = await fetch(`${url}/survey-compendium/${encodeURIComponent(jobId)}/status`, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/survey-compendium/${encodeURIComponent(jobId)}/status`,
+    { headers: await authHeaders() },
+    T_GEN, 'Checking survey status',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/survey-compendium');
   return json<JobStatus>(res);
 }
@@ -519,16 +597,22 @@ export async function uploadDocument(file: File, metadata?: Record<string, unkno
   const form = new FormData();
   form.append('file', file);
   if (metadata) form.append('metadata', JSON.stringify(metadata));
-  const res = await fetch(`${url}/upload`, {
-    method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form,
-  });
+  const res = await fetchWithTimeout(
+    `${url}/upload`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
+    T_GEN, 'Uploading document',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ file_id: string; file_name: string; status: string }>(res);
 }
 
 export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }> {
   const url = requireUrl();
-  const res = await fetch(`${url}/upload/${encodeURIComponent(fileId)}/status`, { headers: await authHeaders() });
+  const res = await fetchWithTimeout(
+    `${url}/upload/${encodeURIComponent(fileId)}/status`,
+    { headers: await authHeaders() },
+    T_GEN, 'Checking upload status',
+  );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }>(res);
 }

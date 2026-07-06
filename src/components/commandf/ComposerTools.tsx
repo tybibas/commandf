@@ -68,7 +68,7 @@ export default function ComposerTools({
         onFocusRestore?.();
       }
     } catch {
-      (onError ?? ((m: string) => console.warn(m)))('Could not optimize your prompt — try again.');
+      (onError ?? ((m: string) => console.warn(m)))('Could not optimize your prompt. Try again.');
     } finally {
       setOptimizing(false);
     }
@@ -87,11 +87,11 @@ export default function ComposerTools({
         onClick={optimize}
         disabled={disabled || !value.trim() || optimizing || dictation.isListening}
         className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-pill border border-border-light text-caption text-text-secondary hover:text-text-primary hover:border-border-hover transition-colors ${MOTION} ${FOCUS} disabled:opacity-40 disabled:pointer-events-none`}
-        title="Clean up my text — restructure your notes into a sharp, well-formed prompt"
+        title="Clean up my text: restructure your notes into a sharp, well-formed prompt"
       >
         {optimizing
           ? <Loader2 className="w-3.5 h-3.5 animate-spin text-text-muted" aria-hidden />
-          : <Wand2 className="w-3.5 h-3.5 text-brand-ink" strokeWidth={1.75} aria-hidden />}
+          : <Wand2 className="w-3.5 h-3.5 text-accent-ink" strokeWidth={1.75} aria-hidden />}
         {optimizing ? 'Optimizing…' : 'Optimize'}
       </button>
     </div>
