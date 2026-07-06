@@ -655,10 +655,14 @@ export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
 /** Studio session payload (§4) for a built deck: build-format options + the
  *  category-grounding provenance. Throws EndpointPending on 404/501 so the surface
  *  can degrade gracefully while the backend endpoint is still landing. */
-export async function fetchStudioSession(jobId: string): Promise<StudioSession> {
+export async function fetchStudioSession(jobId: string, format?: string): Promise<StudioSession> {
   const url = requireUrl();
+  // `?format=` re-issues grounding retrieval for a different build format (§4). NOTE
+  // (contract flag): whether the backend honors this query param is unconfirmed — if
+  // not, it returns the same session and the selector just reflects locally.
+  const qs = format ? `?format=${encodeURIComponent(format)}` : '';
   const res = await fetchWithTimeout(
-    `${url}/generate-deck/${encodeURIComponent(jobId)}/studio`,
+    `${url}/generate-deck/${encodeURIComponent(jobId)}/studio${qs}`,
     { headers: await authHeaders() },
     T_GEN, 'Opening studio session',
   );

@@ -20,6 +20,35 @@ const parseBody = (init?: RequestInit): Record<string, unknown> => {
   try { return init?.body ? JSON.parse(init.body as string) : {}; } catch { return {}; }
 };
 
+// Grounding trust-footer states for verifying F6, chosen by ?grounding=:
+//  (default) populated · pending = null grounding (the real session-open shape) ·
+//  fallback = fell_back_unfiltered (the "no category exemplars matched" warning).
+const studioSessionFor = (mode: string | null, format?: string | null) => {
+  let s = MOCK_STUDIO_SESSION;
+  // Honor ?format= (the backend's intended re-issue-retrieval path): reflect the
+  // chosen format + its target category in the returned session.
+  if (format) {
+    const opt = s.build_format_options.find((o) => o.format === format);
+    if (opt) {
+      s = {
+        ...s,
+        active_format: opt.format,
+        active_target_category: opt.target_category,
+        grounding: { ...s.grounding, target_category: opt.target_category },
+      };
+    }
+  }
+  if (mode === 'pending') {
+    return { ...s, grounding: { ...s.grounding, content_pool: null,
+      style_exemplars: { ...s.grounding.style_exemplars, n_matched: null, fell_back_unfiltered: null, exemplars: [] } } };
+  }
+  if (mode === 'fallback') {
+    return { ...s, grounding: { ...s.grounding,
+      style_exemplars: { ...s.grounding.style_exemplars, fell_back_unfiltered: true, exemplars: [] } } };
+  }
+  return s;
+};
+
 // Deck Studio previews: `<img>` loads bypass the fetch stub below, so the api
 // client reads slide PNGs from this hook in the harness (see deckSlidePreviewUrl).
 (window as unknown as { __commandfMockPreview?: (i: number, rev: number) => string })
@@ -77,7 +106,11 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     // Deck Studio (C-2): studio session (B/A) + streaming edit-op chat. These MUST
     // precede the generic /chat handler — the deck-chat URL also contains '/chat'.
-    if (path.includes('/generate-deck') && path.includes('/studio')) return jsonRes(MOCK_STUDIO_SESSION);
+    if (path.includes('/generate-deck') && path.includes('/studio')) {
+      const mode = new URLSearchParams(window.location.search).get('grounding');
+      const fmt = (() => { try { return new URL(url).searchParams.get('format'); } catch { return null; } })();
+      return jsonRes(studioSessionFor(mode, fmt));
+    }
     if (path.includes('/generate-deck') && path.includes('/undo')) {
       // Per-op undo of the dependent bullet op (op_a2) can't be isolated -> the
       // backend emits a recoverable error and the UI offers a whole-group undo.

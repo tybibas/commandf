@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Presentation, History } from 'lucide-react';
-import type { DeckOp, JobStatus, DeckChatHandlers } from './api';
-import { undoDeckStream } from './api';
+import { Presentation } from 'lucide-react';
+import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession } from './api';
+import { undoDeckStream, fetchStudioSession } from './api';
 import { SurfaceHeader } from './generationUI';
 import DeckChat from './DeckChat';
 import DeckCanvas from './DeckCanvas';
 import DeckChangelog, { type ChangelogBatch } from './DeckChangelog';
+import DeckGroundingBar from './DeckGroundingBar';
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-
-const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring';
 
 /**
  * Deck Studio — the split chat↔canvas surface (charter §C, contract
@@ -48,6 +47,45 @@ export default function DeckStudio({
   const [dirtySlides, setDirtySlides] = useState<Set<number>>(new Set());
   const [showChangelog, setShowChangelog] = useState(false);
   const [undoBusy, setUndoBusy] = useState<string | null>(null);
+  const [studioSession, setStudioSession] = useState<StudioSession | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+  const [activeFormat, setActiveFormat] = useState('');
+  const [formatBusy, setFormatBusy] = useState(false);
+
+  // B-reflection (§4): open the studio session for build-format options + grounding
+  // provenance, and seed the authoritative slide_order (id→position) for the changelog.
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const s = await fetchStudioSession(jobId);
+        if (!live) return;
+        setStudioSession(s);
+        setActiveFormat(s.active_format);
+        if (s.slide_order?.length) setSlideOrder(s.slide_order);
+      } catch {
+        // Endpoint still landing / unreachable → the bar degrades gracefully (no
+        // selector, no footer). The deck still edits; grounding is just not shown.
+      } finally {
+        if (live) setSessionLoading(false);
+      }
+    })();
+    return () => { live = false; };
+  }, [jobId]);
+
+  const onSelectFormat = useCallback(async (format: string) => {
+    setActiveFormat(format); // optimistic — the selector reflects immediately
+    setFormatBusy(true);
+    try {
+      const s = await fetchStudioSession(jobId, format);
+      setStudioSession(s);
+      setActiveFormat(s.active_format);
+    } catch {
+      // Leave the optimistic selection; grounding just won't refresh.
+    } finally {
+      setFormatBusy(false);
+    }
+  }, [jobId]);
 
   // Chat-to-canvas seam (DESIGN.md §3): the chat column starts full width, then
   // settles to 380px while the canvas fades/slides in +16px. Both driven by the
@@ -182,18 +220,6 @@ export default function DeckStudio({
     <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
       <SurfaceHeader icon={Presentation} title={seed.title || 'Deck studio'} subtitle={subtitle} onBack={onBack} />
 
-      {/* Changelog toggle — floats top-right while the drawer is closed. */}
-      {!showChangelog && (
-        <button
-          type="button"
-          onClick={() => setShowChangelog(true)}
-          className={`absolute top-4 right-6 md:right-7 z-10 inline-flex items-center gap-1.5 rounded-pill border border-border-light bg-bg-elevated px-2.5 py-1 text-caption text-text-secondary hover:text-text-primary hover:border-border-hover shadow-float transition-colors ${FOCUS}`}
-        >
-          <History className="w-3.5 h-3.5" strokeWidth={1.75} aria-hidden />
-          Changes{appliedChanges > 0 ? ` (${appliedChanges})` : ''}
-        </button>
-      )}
-
       <div className="flex-1 min-h-0 flex -mx-6 md:-mx-7 border-t border-border-light">
         <div
           style={{ width: compact ? '380px' : '100%' }}
@@ -215,6 +241,16 @@ export default function DeckStudio({
             compact ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'
           }`}
         >
+          <DeckGroundingBar
+            session={studioSession}
+            loading={sessionLoading}
+            activeFormat={activeFormat}
+            onSelectFormat={onSelectFormat}
+            formatBusy={formatBusy}
+            changesCount={appliedChanges}
+            changelogOpen={showChangelog}
+            onToggleChangelog={() => setShowChangelog(true)}
+          />
           <DeckCanvas
             jobId={jobId}
             deckRev={deckRev}
