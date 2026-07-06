@@ -677,6 +677,7 @@ export function CommandFPage({
         onOpenSession={openSession}
         onDeleteSession={onDeleteSession}
         onOpenKnowledge={() => setShowKnowledge(true)}
+        onOpenSpend={() => setSurface('spend')}
         docCount={docs}
         contextLabel={contextLabel}
         logoSrc={logoSrc}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  PanelLeftClose, PanelLeft, Plus, Database, MessageSquare, Trash2, LogOut, ChevronUp,
+  PanelLeftClose, PanelLeft, Plus, Database, MessageSquare, Trash2, LogOut, ChevronUp, Coins,
 } from 'lucide-react';
 import { timeAgo } from './util';
 import type { Session } from './api';
@@ -189,6 +189,7 @@ interface SidebarProps {
   onOpenSession: (id: string) => void;
   onDeleteSession: (id: string) => void;
   onOpenKnowledge: () => void;
+  onOpenSpend: () => void;
   docCount: number;
   contextLabel: string;
   /** Workspace logo (e.g. the Actionist wordmark) shown in the footer. */
@@ -203,7 +204,7 @@ interface SidebarProps {
 
 export default function Sidebar({
   collapsed, onToggle, onNewChat, sessions, sessionsError, onRetrySessions, activeSessionId,
-  onOpenSession, onDeleteSession, onOpenKnowledge, docCount, contextLabel, logoSrc,
+  onOpenSession, onDeleteSession, onOpenKnowledge, onOpenSpend, docCount, contextLabel, logoSrc,
   userName, userEmail, planLabel, onSignOut,
 }: SidebarProps) {
   return (
@@ -262,6 +263,20 @@ export default function Sidebar({
               )}
             </>
           )}
+        </button>
+      </div>
+
+      {/* ── Spend ──────────────────────────────────────────────────────── */}
+      <div className={`shrink-0 ${collapsed ? 'px-2' : 'px-3'} pb-1.5`}>
+        <button
+          type="button"
+          onClick={onOpenSpend}
+          title={collapsed ? 'Spend' : undefined}
+          aria-label="Open spend"
+          className={`w-full inline-flex items-center rounded-control text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2.5 px-3 h-9'}`}
+        >
+          <Coins className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} aria-hidden />
+          {!collapsed && <span className="flex-1 text-left text-body truncate">Spend</span>}
         </button>
       </div>
 
