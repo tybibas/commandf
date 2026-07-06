@@ -169,22 +169,44 @@ One kept item: `'—'` as tabular data placeholder in KnowledgePanel stat displa
 Primary CTAs may include an inline `→` (site convention). Max one primary per view region.
 
 ### Chat bubbles (`Conversation.tsx` — reused by Deck Studio chat)
-- Assistant: no card chrome on paper; `text-body` 16px, max-width ~72ch.
-- User: bg-secondary, radius-surface.
-- Streaming: caret in accent; stop button always visible while streaming; auto-scroll freeze
-  on user scroll (table stakes — research_web_references.md §6).
+- Assistant: no card chrome on paper; `text-body` 16px, max-width ~72ch. Attribution row above
+  the answer: accent-colored spark icon + "Command F" in `text-caption text-text-muted`. A quiet
+  copy-to-clipboard icon (`rounded-control`, `text-text-muted` → `hover:text-text-primary
+  hover:bg-bg-tertiary`) fades in on hover of the turn; `title="Copy response"`, `aria-label`
+  required. No fabricated timestamp — omit unless the message model actually carries one.
+- User: **bg-structure (plum) fill, `text-structure-ink` (white, 15.6:1 light / 10.5:1 dark)**,
+  `rounded-surface` with the bottom-right corner tightened to `rounded-br-control` (asymmetric,
+  speech-directional), right-aligned, `max-w-[60ch]`, `text-body`. The "Show more" collapse
+  fade on long messages is plum-tinted (`from-structure via-structure to-transparent`) with a
+  light `bg-bg-elevated` pill for the label so it stays legible over the fill.
+- Streaming: caret in accent — rendered as a blinking `▍` appended after the last paragraph of
+  the draft bubble (`text-accent`, `animate-pulse`) while the synthesis turn streams; the copy
+  affordance is hidden until the answer is final. Stop button always visible while streaming
+  (bordered, `text-secondary` — bumped from muted for prominence); auto-scroll freeze on user
+  scroll (table stakes — research_web_references.md §6).
+- Rhythm: the reply that answers a question sits close to it (`mt-3`, tight); a new question
+  opens a new exchange (`mt-10`, loose) — the transcript reads in exchanges, not one stream.
 
 ### Citation / source card (new, the differentiator)
 - Chip inline: mono `text-caption`, source-soft bg, source text, radius-control.
-- Card: bg-elevated, border-light, radius-surface; left block = document/slide thumbnail
-  (radius-image); title `text-body-sm` 500; meta in mono micro; hover: border-hover + lift
-  `translateY(-1px)`. "Verified" tick in `--color-verified`.
+- Card: bg-elevated, border-light, radius-surface; left block = a small filled `rounded-control`
+  square in `source-soft` holding the file-type icon in `--color-source` (not a bare icon); title
+  `text-body-sm` 500; meta in mono micro; hover: border-hover + lift `translateY(-1px)`.
+  "N passages" expander in `font-mono text-micro`. "Verified" tick in `--color-verified`.
 
 ### Sidebar (`Sidebar.tsx` — will host the Decks rail)
 - bg-secondary; width 264 / 56 collapsed.
-- Wordmark: display 400, text-primary.
-- Session item: `text-body-sm`; active = accent 3px left pill + bg-tertiary; collapsed mode
-  must still show the active indicator (audit issue D).
+- Wordmark: display 400, **plum (`--color-structure`) in light theme — brand visible at rest;
+  dark theme keeps `text-primary`** (plum reads muddy on near-black; class `.wordmark-plum`).
+- Session item: `text-body-sm`; active = accent 3px left pill + bg-tertiary + `font-medium`
+  title; collapsed mode must still show the active indicator (audit issue D).
+- Account menu (`AccountBar`, both collapsed and expanded triggers): popover is
+  `rounded-surface bg-bg-elevated shadow-float`, a header block (avatar on structure fill, name
+  `text-body-sm font-medium`, email `font-mono text-micro text-text-muted`, truncated), a
+  hairline divider, then menu items, a second hairline divider, then "Sign out" —
+  `text-text-secondary` at rest, `hover:text-error hover:bg-error/[0.08]` (an 8% error tint, not
+  the generic tertiary hover). Keyboard: Escape closes, outside-click closes. Collapsed-rail
+  avatar trigger keeps a visible focus ring + `title` tooltip.
 - Deck items (future): 40px slide thumbnail (radius 6px inner) + title — visual history
   (corpus §10).
 - Group labels: sentence case ("Recent", "Decks"), `text-caption`, text-muted. No ALL-CAPS.
@@ -210,6 +232,14 @@ Primary CTAs may include an inline `→` (site convention). Max one primary per 
 - bg-elevated, radius-surface, shadow-float (allowed: floating).
 - Active item: bg-tertiary + 2px structure left inset (replaces the low-contrast amber tint,
   audit `09_command_palette.png`).
+
+### Landing (`Landing.tsx`)
+- Actionist mark on the hero: inlined SVG (`currentColor`) in `text-accent-ink` — the one orange
+  accent for this view, distinct from the plum wordmark/structure color used everywhere else at
+  rest. (Not the sidebar's neutral `<img>` wordmark — that stays quiet.)
+- Quick actions: "Build a deck" is the single primary — `bg-structure text-structure-ink` pill,
+  `font-medium`, icon in `text-structure-ink`. The other chips stay quiet (`border-border-light
+  bg-bg-primary text-text-secondary`, icon `text-accent-ink`). One primary per view (house rule).
 
 ### States (every surface ships all four)
 - Loading: skeleton shimmer matching final layout on paper-200 (no lone spinners for

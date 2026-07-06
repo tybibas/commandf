@@ -221,6 +221,15 @@
   filter: invert(1) brightness(1.9) contrast(0.9);
 }
 
+/* W5.4 — sidebar wordmark: plum at rest in light theme (brand visible at rest);
+   dark theme keeps the standard primary-text color (plum reads muddy on near-black). */
+.wordmark-plum {
+  color: var(--color-structure);
+}
+.theme-quantifire .wordmark-plum {
+  color: var(--color-text-primary);
+}
+
 /* Primary button pressed state */
 .btn-primary:active {
   transform: scale(0.98);
