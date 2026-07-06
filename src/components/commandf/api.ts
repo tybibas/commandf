@@ -704,8 +704,14 @@ export type DeckChatHandlers = {
  *  (carrying the new deck_rev). Same SSE framing + idle-timeout guard as
  *  sendChatStream. The backend commits once at batch_done (single doc write +
  *  whole-deck rebuild); the caller re-fetches only `affects_slides` previews. */
-export async function sendDeckChatStream(
-  jobId: string, message: string, handlers: DeckChatHandlers, signal?: AbortSignal,
+/** Shared SSE reader for the deck edit + undo streams — both speak the identical
+ *  §3.1 event language (`data: {json}\n\n`, one batch of ops → new deck_rev +
+ *  slide_order), so forward edits and undo reconcile through the same handlers.
+ *  A recoverable `error` event still fires `onError` and then throws (the batch
+ *  did not commit) — the caller distinguishes the recoverable case via the flag
+ *  it sets inside `onError`. */
+async function streamDeckSSE(
+  path: string, body: unknown, handlers: DeckChatHandlers, signal?: AbortSignal,
 ): Promise<DeckBatchDone> {
   const IDLE_MS = 90_000;
   const url = requireUrl();
@@ -721,14 +727,14 @@ export async function sendDeckChatStream(
   const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS); };
 
   try {
-    const res = await fetch(`${url}/generate-deck/${encodeURIComponent(jobId)}/chat`, {
+    const res = await fetch(`${url}${path}`, {
       method: 'POST',
       headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(body),
       signal: combined,
     });
-    if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/generate-deck/chat');
-    if (!res.ok || !res.body) throw new Error(`deck edit failed (${res.status})`);
+    if (res.status === 404 || res.status === 501) throw new EndpointPendingError(path);
+    if (!res.ok || !res.body) throw new Error(`deck stream failed (${res.status})`);
     const reader = res.body.getReader();
     const dec = new TextDecoder();
     let buf = '';
@@ -765,6 +771,32 @@ export async function sendDeckChatStream(
   } finally {
     clearTimeout(idleTimer);
   }
+}
+
+/** Streaming deck edit: POSTs a user message to the deck-chat endpoint and drives
+ *  the §3.1 event handlers as ops apply, resolving with the terminal batch_done
+ *  (carrying the new deck_rev + slide_order). */
+export async function sendDeckChatStream(
+  jobId: string, message: string, handlers: DeckChatHandlers, signal?: AbortSignal,
+): Promise<DeckBatchDone> {
+  return streamDeckSSE(`/generate-deck/${encodeURIComponent(jobId)}/chat`, { message }, handlers, signal);
+}
+
+/** Undo a committed batch (`{batch_id}`) or a single op (`{op_id}`). Server-
+ *  authoritative + $0 IR replay (R1): the backend streams the INVERSE ops back
+ *  through the SAME §3.1 event shape, so the canvas reconciles exactly as it does
+ *  for a forward edit. If a per-op undo can't be isolated (a dependent op), the
+ *  backend emits a recoverable `error` event and the UI offers a whole-group undo.
+ *
+ *  NOTE (contract flag): the `POST /generate-deck/{job_id}/undo` route is a
+ *  PROPOSED transport — the backend has the undo machinery (iterations + before/
+ *  after envelopes) but not yet this endpoint. Built + mocked against this shape;
+ *  confirm/adjust with the backend lane. */
+export async function undoDeckStream(
+  jobId: string, target: { batch_id?: string; op_id?: string },
+  handlers: DeckChatHandlers, signal?: AbortSignal,
+): Promise<DeckBatchDone> {
+  return streamDeckSSE(`/generate-deck/${encodeURIComponent(jobId)}/undo`, target, handlers, signal);
 }
 
 /** Builds a download href an `<a download>` can use: the download endpoints accept

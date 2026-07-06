@@ -11,8 +11,14 @@ import { supabase } from '../lib/supabase';
 import {
   MOCK_MODELS, MOCK_SESSIONS, MOCK_BRIEFING, MOCK_CHAT_RESPONSE, MOCK_HISTORY,
   MOCK_OUTLINE, MOCK_DECK_STATUS, MOCK_UPLOAD_STATUS,
-  MOCK_STUDIO_SESSION, MOCK_DECK_EDIT_STREAM, mockSlidePreview,
+  MOCK_STUDIO_SESSION, MOCK_DECK_EDIT_STREAM, MOCK_DECK_EDIT_STREAM_FAIL,
+  MOCK_DECK_UNDO_STREAM, MOCK_DECK_UNDO_DEP_ERROR, mockSlidePreview,
 } from './fixtures';
+
+// Parse a stubbed request's JSON body (deck /chat + /undo route on message/target).
+const parseBody = (init?: RequestInit): Record<string, unknown> => {
+  try { return init?.body ? JSON.parse(init.body as string) : {}; } catch { return {}; }
+};
 
 // Deck Studio previews: `<img>` loads bypass the fetch stub below, so the api
 // client reads slide PNGs from this hook in the harness (see deckSlidePreviewUrl).
@@ -72,7 +78,17 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     // Deck Studio (C-2): studio session (B/A) + streaming edit-op chat. These MUST
     // precede the generic /chat handler — the deck-chat URL also contains '/chat'.
     if (path.includes('/generate-deck') && path.includes('/studio')) return jsonRes(MOCK_STUDIO_SESSION);
-    if (path.includes('/generate-deck') && path.includes('/chat')) return sseRes(MOCK_DECK_EDIT_STREAM);
+    if (path.includes('/generate-deck') && path.includes('/undo')) {
+      // Per-op undo of the dependent bullet op (op_a2) can't be isolated -> the
+      // backend emits a recoverable error and the UI offers a whole-group undo.
+      const b = parseBody(init);
+      if (b.op_id === 'op_a2') return sseRes(MOCK_DECK_UNDO_DEP_ERROR);
+      return sseRes(MOCK_DECK_UNDO_STREAM);
+    }
+    if (path.includes('/generate-deck') && path.includes('/chat')) {
+      const b = parseBody(init);
+      return sseRes(/fail/i.test(String(b.message ?? '')) ? MOCK_DECK_EDIT_STREAM_FAIL : MOCK_DECK_EDIT_STREAM);
+    }
     if (path.includes('/chat')) {
       await new Promise((r) => setTimeout(r, 650)); // let the typing indicator show
       return jsonRes(MOCK_CHAT_RESPONSE);

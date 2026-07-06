@@ -230,4 +230,79 @@ export const MOCK_DECK_EDIT_STREAM: DeckStreamEvent[] = [
   { event: 'batch_done', batch_id: 'eb_mock_01', deck_rev: 2, applied: 3, failed: 0, slide_order: MOCK_SLIDE_IDS },
 ];
 
+// A forward batch where one op FAILS (status:'failed' + error) — exercises the
+// failed op card. The chart op fails; only slide 1 goes dirty; applied 2, failed 1.
+export const MOCK_DECK_EDIT_STREAM_FAIL: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_02', planned: 2, summary: 'Tightening the summary and reworking the risk chart' },
+  { event: 'assistant_delta', text: 'Tightened the summary. ' },
+  { event: 'assistant_delta', text: "The chart change didn't apply." },
+  { event: 'phase', label: 'Rewriting the executive summary', state: 'active' },
+  {
+    event: 'op', index: 0, status: 'applied',
+    op: {
+      op_id: 'op_b1', batch_id: 'eb_mock_02', type: 'rewrite_body',
+      target: { slide_id: 's_ov01', element_id: 'body' },
+      summary: 'Tightened the executive summary to three lines',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  { event: 'slide_dirty', slide_ids: ['s_ov01'], slide_indices: [1] },
+  {
+    event: 'op', index: 1, status: 'failed',
+    error: 'The risk chart has no numeric series to convert to a donut.',
+    op: {
+      op_id: 'op_b2', batch_id: 'eb_mock_02', type: 'change_chart_type',
+      target: { slide_id: 's_rk04', element_id: 'chart' },
+      summary: 'Change the risk chart to a donut',
+      reversible: false, affects_slides: ['s_rk04'],
+    },
+  },
+  { event: 'batch_done', batch_id: 'eb_mock_02', deck_rev: 2, applied: 1, failed: 1, slide_order: MOCK_SLIDE_IDS },
+];
+
+// Undo of eb_mock_01 — the backend streams the INVERSE ops back (same shape). The
+// deck_rev still advances (monotonic; bumps on undo too, §3.4); slides 1 & 4 re-render.
+export const MOCK_DECK_UNDO_STREAM: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_01_undo', planned: 3, summary: 'Reverting 3 changes' },
+  {
+    event: 'op', index: 0, status: 'applied',
+    op: {
+      op_id: 'op_a3i', batch_id: 'eb_mock_01_undo', type: 'change_chart_type',
+      target: { slide_id: 's_rk04', element_id: 'chart' },
+      summary: 'Reverted the risk chart to its bar form',
+      reversible: true, affects_slides: ['s_rk04'],
+    },
+  },
+  {
+    event: 'op', index: 1, status: 'applied',
+    op: {
+      op_id: 'op_a2i', batch_id: 'eb_mock_01_undo', type: 'edit_bullet',
+      target: { slide_id: 's_ov01', element_id: 'b_lead' },
+      summary: 'Restored the original opening bullet',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  {
+    event: 'op', index: 2, status: 'applied',
+    op: {
+      op_id: 'op_a1i', batch_id: 'eb_mock_01_undo', type: 'rewrite_body',
+      target: { slide_id: 's_ov01', element_id: 'body' },
+      summary: 'Restored the original executive summary',
+      reversible: true, affects_slides: ['s_ov01'],
+    },
+  },
+  { event: 'slide_dirty', slide_ids: ['s_ov01', 's_rk04'], slide_indices: [1, 4] },
+  { event: 'batch_done', batch_id: 'eb_mock_01_undo', deck_rev: 3, applied: 3, failed: 0, slide_order: MOCK_SLIDE_IDS },
+];
+
+// Per-op undo of a DEPENDENT op — the backend can't isolate it and emits a
+// recoverable error; the UI must fall back to offering a whole-group undo.
+export const MOCK_DECK_UNDO_DEP_ERROR: DeckStreamEvent[] = [
+  { event: 'batch_start', batch_id: 'eb_mock_01_undo', planned: 1, summary: 'Undoing one change' },
+  {
+    event: 'error', recoverable: true,
+    message: "This change can't be undone on its own because a later change builds on it. Undo the whole group instead?",
+  },
+];
+
 export const MOCK_UPLOAD_STATUS = { status: 'complete' as const, chunks_indexed: 87 };
