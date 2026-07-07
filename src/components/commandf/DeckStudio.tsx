@@ -1,12 +1,21 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Presentation } from 'lucide-react';
-import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession } from './api';
-import { undoDeckStream, fetchStudioSession } from './api';
+import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession, BuildStreamEvent } from './api';
+import {
+  undoDeckStream, fetchStudioSession, streamDeckBuild, resolveBuildPreviewUrl,
+  deckSlidePreviewUrl, StreamAbortedError,
+} from './api';
 import { SurfaceHeader } from './generationUI';
 import DeckChat from './DeckChat';
 import DeckCanvas from './DeckCanvas';
 import DeckChangelog, { type ChangelogBatch } from './DeckChangelog';
 import DeckGroundingBar from './DeckGroundingBar';
+import { BuildNarrationColumn, BuildCanvas, type BuildSlot } from './DeckBuildView';
+
+// Resume cursors survive a DeckStudio remount (surface nav away/back, a
+// refresh-driven re-open) — keyed by job id, module-scoped so it outlives any
+// one component instance. Cleared once a build reaches its terminal state.
+const buildResumeCursors = new Map<string, number>();
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -27,19 +36,159 @@ const reducedMotion = () =>
  */
 export default function DeckStudio({
   onBack, jobId, approvedPlan: _approvedPlan, seed, clientSlug: _clientSlug, sessionId: _sessionId,
+  buildStatus = 'ready', planTotalSlides,
 }: {
   onBack: () => void;
   jobId: string;
   // Reserved for the [LLM] authoring ops (rewrite_slide / add_slide / change_layout)
   // once the deck-agent lane is live — not read in this slice.
   approvedPlan: Record<string, unknown> | null;
-  seed: JobStatus;
+  // `seed` (the completed job's JobStatus) is only available once a deck has
+  // finished building. Omitted (null) when the studio mounts DURING a live
+  // build (§3.6) — the build-mode view below never reads it.
+  seed: JobStatus | null;
   clientSlug?: string;
   sessionId?: string | null;
+  // §3.6 build-time copilot: 'building' mounts the studio against an in-flight
+  // build job and watches it stream in; 'ready' (default) is today's post-build
+  // editor, unchanged. `planTotalSlides` sizes the skeleton grid while building.
+  buildStatus?: 'building' | 'ready';
+  planTotalSlides?: number;
 }) {
-  const [deckRev, setDeckRev] = useState(seed.deck_rev ?? 1);
-  const [previewUrls, setPreviewUrls] = useState<string[]>(seed.preview_urls ?? []);
+  const [deckRev, setDeckRev] = useState(seed?.deck_rev ?? (buildStatus === 'building' ? 0 : 1));
+  const [previewUrls, setPreviewUrls] = useState<string[]>(seed?.preview_urls ?? []);
   const [selectedSlide, setSelectedSlide] = useState(0);
+
+  // ── §3.6 build-mode state — live while `buildStatus==='building'`, then the
+  // component permanently flips to the existing interactive studio below. ──
+  const [building, setBuilding] = useState(buildStatus === 'building');
+  const [slots, setSlots] = useState<BuildSlot[]>(() => (
+    buildStatus === 'building'
+      ? Array.from({ length: planTotalSlides ?? 0 }, (_, i) => ({ index: i, status: 'pending' as const }))
+      : []
+  ));
+  const [buildNarration, setBuildNarration] = useState<string[]>([]);
+  const [buildPhaseLabel, setBuildPhaseLabel] = useState<string | null>(null);
+  const [buildFatalError, setBuildFatalError] = useState<string | null>(null);
+  const slotsRef = useRef(slots);
+  slotsRef.current = slots;
+
+  const patchSlot = useCallback((index: number, patch: Partial<BuildSlot>) => {
+    setSlots((prev) => {
+      if (index >= prev.length) {
+        // A plan_total_slides mismatch (stale/omitted count) — grow to fit
+        // rather than silently drop the event.
+        const grown = [...prev];
+        while (grown.length <= index) grown.push({ index: grown.length, status: 'pending' });
+        grown[index] = { ...grown[index], ...patch };
+        return grown;
+      }
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  }, []);
+
+  const handleBuildEvent = useCallback((evt: BuildStreamEvent) => {
+    switch (evt.event) {
+      case 'build_start':
+        if (evt.plan_total_slides > 0 && slotsRef.current.length !== evt.plan_total_slides) {
+          setSlots(Array.from({ length: evt.plan_total_slides }, (_, i) => ({ index: i, status: 'pending' as const })));
+        }
+        break;
+      case 'slide_planned':
+        patchSlot(evt.index, { status: 'planned', slideId: evt.slide_id, slideTemplate: evt.slide_template, lede: evt.lede });
+        break;
+      case 'slide_authoring':
+        patchSlot(evt.index, { status: 'authoring', label: evt.label });
+        setBuildPhaseLabel(evt.label);
+        break;
+      case 'phase':
+        if (typeof evt.index === 'number') patchSlot(evt.index, { label: evt.label });
+        setBuildPhaseLabel(evt.state === 'done' ? null : evt.label);
+        break;
+      case 'slide_ready':
+        (async () => {
+          const url = await resolveBuildPreviewUrl(evt.preview_url).catch(() => evt.preview_url);
+          patchSlot(evt.index, { status: 'ready', slideId: evt.slide_id, previewUrl: url, label: undefined });
+        })();
+        break;
+      case 'narration':
+        setBuildNarration((prev) => [...prev, evt.text]);
+        break;
+      case 'error':
+        setBuildPhaseLabel(null);
+        if (evt.recoverable) {
+          if (typeof evt.index === 'number') patchSlot(evt.index, { status: 'skipped', error: evt.message });
+          setBuildNarration((prev) => [...prev, evt.message]);
+        } else {
+          setBuildFatalError(evt.message);
+        }
+        break;
+      case 'heartbeat':
+      case 'build_done':
+        break; // build_done handled by the tail loop (carries deck_rev/slide_order)
+    }
+  }, [patchSlot]);
+
+  // Drives the resumable build tail: reconnects with the last cursor seen on
+  // any non-terminal stream end (idle timeout, drop, ASGI ceiling) until
+  // `build_done` or a non-recoverable error. Runs once per job while building.
+  useEffect(() => {
+    if (buildStatus !== 'building' || !building) return;
+    let cancelled = false;
+    const ctrl = new AbortController();
+
+    (async () => {
+      let cursor = buildResumeCursors.get(jobId) ?? -1;
+      while (!cancelled) {
+        try {
+          const { terminal, lastCursor } = await streamDeckBuild(jobId, {
+            fromCursor: cursor, onEvent: handleBuildEvent, signal: ctrl.signal,
+          });
+          cursor = lastCursor;
+          buildResumeCursors.set(jobId, cursor);
+          if (terminal) {
+            buildResumeCursors.delete(jobId);
+            setDeckRev(terminal.deck_rev);
+            setSlideOrder(terminal.slide_order);
+            // Reconstruct the canvas's previewUrls DETERMINISTICALLY from the
+            // terminal event, NOT from slotsRef: pages 1..built_through are exactly
+            // the successfully-rendered slides. Reading slotsRef here dropped the
+            // final slide(s) whenever the last slide_ready's DETACHED preview
+            // resolve + React commit hadn't landed before this flush (the slot
+            // still had previewUrl: undefined and got filtered out). `deckSlidePreviewUrl`
+            // takes a 0-based index and emits the 1-based /preview/{n} path, so
+            // iterate 0..built_through-1 for exactly built_through entries in page order.
+            const urls = await Promise.all(
+              Array.from({ length: terminal.built_through }, (_, i) =>
+                deckSlidePreviewUrl(jobId, i, terminal.deck_rev)),
+            );
+            setPreviewUrls(urls);
+            setBuilding(false);
+            break;
+          }
+          if (cancelled) break;
+          await new Promise((r) => setTimeout(r, 1000)); // brief backoff before reconnect
+        } catch (e) {
+          if (e instanceof StreamAbortedError) break; // unmount or deliberate cancel
+          setBuildFatalError((e as Error)?.message || 'Build stalled.');
+          break;
+        }
+      }
+    })();
+
+    return () => { cancelled = true; ctrl.abort(); };
+    // `handleBuildEvent` is stable (only closes over the setter functions +
+    // the slots ref), so it's intentionally left out to avoid re-subscribing
+    // the stream on every slot patch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId, buildStatus, building]);
+
+  const retryBuild = useCallback(() => {
+    setBuildFatalError(null);
+    setBuilding(true);
+  }, []);
   const [batches, setBatches] = useState<ChangelogBatch[]>([]);
   const [slideOrder, setSlideOrder] = useState<string[]>([]);
   const [phase, setPhase] = useState<{ label: string; state: 'active' | 'done' } | null>(null);
@@ -54,6 +203,10 @@ export default function DeckStudio({
 
   // B-reflection (§4): open the studio session for build-format options + grounding
   // provenance, and seed the authoritative slide_order (id→position) for the changelog.
+  // Re-runs once when `building` flips false: the mid-build fetch reflects an
+  // under-populated content_pool/style_exemplars, so the grounding must be
+  // refreshed once the deck finishes building. Normal (already-built) mounts start
+  // with building=false and so fetch exactly once.
   useEffect(() => {
     let live = true;
     (async () => {
@@ -71,7 +224,7 @@ export default function DeckStudio({
       }
     })();
     return () => { live = false; };
-  }, [jobId]);
+  }, [jobId, building]);
 
   const onSelectFormat = useCallback(async (format: string) => {
     setActiveFormat(format); // optimistic — the selector reflects immediately
@@ -218,9 +371,48 @@ export default function DeckStudio({
       ? `${appliedChanges} change${appliedChanges === 1 ? '' : 's'} applied so far. Every edit previews instantly.`
       : 'Chat to edit. Every change previews instantly.';
 
+  // ── §3.6 build-mode view — watch it build, chat input disabled ──────────
+  // Rendered while `building` is true; once `build_done` lands, `building`
+  // flips false permanently and this component falls through to the existing
+  // interactive studio below (DeckChat + DeckCanvas, untouched).
+  if (building) {
+    const builtCount = slots.filter((s) => s.status === 'ready').length;
+    const buildSubtitle = buildFatalError
+      ? 'Build stalled.'
+      : `Building slide ${Math.min(builtCount + 1, slots.length || 1)} of ${slots.length || '…'}…`;
+    return (
+      <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
+        <SurfaceHeader icon={Presentation} title="Deck studio" subtitle={buildSubtitle} onBack={onBack} />
+        <div className="flex-1 min-h-0 flex -mx-6 md:-mx-7 border-t border-border-light">
+          <div className="w-[380px] shrink-0 min-w-0 flex flex-col border-r border-border-light bg-bg-primary">
+            <BuildNarrationColumn
+              narration={buildNarration}
+              phaseLabel={buildPhaseLabel}
+              fatalError={buildFatalError}
+              builtCount={builtCount}
+              totalCount={slots.length}
+            />
+            {buildFatalError && (
+              <div className="shrink-0 border-t border-border-light px-4 py-3">
+                <button
+                  type="button"
+                  onClick={retryBuild}
+                  className="w-full rounded-control bg-structure text-structure-ink px-3 py-2 text-caption font-medium hover:bg-structure-hover transition-colors"
+                >
+                  Retry build
+                </button>
+              </div>
+            )}
+          </div>
+          <BuildCanvas slots={slots} selected={selectedSlide} onSelect={setSelectedSlide} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
-      <SurfaceHeader icon={Presentation} title={seed.title || 'Deck studio'} subtitle={subtitle} onBack={onBack} />
+      <SurfaceHeader icon={Presentation} title={seed?.title || 'Deck studio'} subtitle={subtitle} onBack={onBack} />
 
       <div className="flex-1 min-h-0 flex -mx-6 md:-mx-7 border-t border-border-light">
         <div

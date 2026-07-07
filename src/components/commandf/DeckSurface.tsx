@@ -6,7 +6,7 @@ import {
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 import {
-  generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide,
+  generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide, startDeckBuild,
   DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError, type DeckOutline as Outline,
 } from './api';
 import { useJob } from './useJob';
@@ -105,9 +105,14 @@ export default function DeckSurface({
   // these sources", these Drive file_ids scope/seed retrieval to those documents.
   initialFileIds?: string[];
   onOpenSurvey?: () => void;
-  // Deck Studio (C-2) handoff — opens the split chat↔canvas editor seeded with
-  // this completed build. Omitted while the studio surface isn't wired in yet.
-  onOpenStudio?: (args: { jobId: string; seed: import('./api').JobStatus; approvedPlan: Record<string, unknown> | null }) => void;
+  // Deck Studio (C-2) handoff. `seed`+`buildStatus` omitted (undefined/null) means
+  // "open against an in-flight build" (§3.6) — the default approved-plan flow now
+  // goes through this path. When absent entirely, DeckSurface falls back to the
+  // legacy one-shot `generateDeck` job (kept for rollback; see buildFromPlan).
+  onOpenStudio?: (args: {
+    jobId: string; seed: import('./api').JobStatus | null; approvedPlan: Record<string, unknown> | null;
+    buildStatus?: 'building'; planTotalSlides?: number;
+  }) => void;
 }) {
   const [type, setType] = useState('');
   const [brief, setBrief] = useState(initialBrief ?? '');
@@ -137,6 +142,12 @@ export default function DeckSurface({
   // download_url + preview_urls). Kept in DeckSurface (not useJob) so slide
   // editing needs no change to the shared job hook.
   const [editedResult, setEditedResult] = useState<import('./api').JobStatus | null>(null);
+
+  // §3.6: starting a live build is a thin POST (returns a job id fast) before
+  // the studio mounts — separate from the one-shot `job` (useJob) lifecycle
+  // below, which the rollback/no-studio-handoff path still uses.
+  const [buildStarting, setBuildStarting] = useState(false);
+  const [buildStartError, setBuildStartError] = useState('');
 
   const fileIds = initialFileIds && initialFileIds.length > 0 ? initialFileIds : undefined;
 
@@ -201,14 +212,40 @@ export default function DeckSurface({
     }
   };
 
+  // Approved-plan build (§3.6): the DEFAULT path now opens the studio the
+  // instant the build job exists and watches it author live, instead of
+  // waiting for a one-shot `generateDeck` job to finish. Only when the host
+  // hasn't wired a studio handoff (`onOpenStudio` absent) does this fall back
+  // to the legacy one-shot job (kept importable for rollback, not deleted).
+  // In-sections mode has no live-build equivalent yet (it needs the chunked
+  // continuity `job.result.built_through` this surface already tracks), so it
+  // always takes the one-shot path.
   const buildFromPlan = (approvedPlan: Record<string, unknown>) => {
     setBuiltPlan(approvedPlan);
-    job.run(() => generateDeck({
+    if (!onOpenStudio || deckMode === 'sections') {
+      job.run(() => generateDeck({
+        request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
+        session_id: sessionId, approved_plan: approvedPlan, target_slides: fullCount,
+        deck_scope: deckMode === 'sections' ? 'section' : 'full',
+        section_start: 0, section_size: chunkSize, file_ids: fileIds,
+      }));
+      return;
+    }
+    setBuildStarting(true); setBuildStartError('');
+    startDeckBuild(approvedPlan, {
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-      session_id: sessionId, approved_plan: approvedPlan, target_slides: fullCount,
-      deck_scope: deckMode === 'sections' ? 'section' : 'full',
-      section_start: 0, section_size: chunkSize, file_ids: fileIds,
-    }));
+      session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
+    }).then(({ job_id }) => {
+      const planSlides = (approvedPlan as { slides?: unknown[] }).slides;
+      onOpenStudio({
+        jobId: job_id, seed: null, approvedPlan, buildStatus: 'building',
+        planTotalSlides: Array.isArray(planSlides) ? planSlides.length : undefined,
+      });
+    }).catch((e: unknown) => {
+      setBuildStartError((e as Error)?.message || 'Could not start the build.');
+    }).finally(() => {
+      setBuildStarting(false);
+    });
   };
 
   const buildDirect = () => {
@@ -298,7 +335,21 @@ export default function DeckSurface({
 
   // ── Outline editor ──
   if (outline) {
-    return <DeckOutline outline={outline} onBack={() => setOutline(null)} onBuild={buildFromPlan} />;
+    return (
+      <>
+        <DeckOutline
+          outline={outline}
+          onBack={() => setOutline(null)}
+          onBuild={buildFromPlan}
+          building={buildStarting}
+        />
+        {buildStartError && (
+          <div className="fixed bottom-4 right-4 z-20 max-w-sm rounded-surface border border-error/40 bg-bg-elevated shadow-float px-4 py-3 text-caption text-error animate-slide-up">
+            {buildStartError}
+          </div>
+        )}
+      </>
+    );
   }
 
   // ── Intent ──
