@@ -82,6 +82,10 @@ export default function DeckStudio({
   const [retryNonce, setRetryNonce] = useState(0);
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
+  // Auto-follow the live build cursor in the main canvas until the user
+  // manually clicks a thumbnail, which pins the view for the rest of this
+  // build. Reset on build_start so each new build auto-follows again.
+  const userPinnedRef = useRef(false);
 
   const patchSlot = useCallback((index: number, patch: Partial<BuildSlot>) => {
     setSlots((prev) => {
@@ -102,6 +106,7 @@ export default function DeckStudio({
   const handleBuildEvent = useCallback((evt: BuildStreamEvent) => {
     switch (evt.event) {
       case 'build_start':
+        userPinnedRef.current = false;
         if (evt.plan_total_slides > 0 && slotsRef.current.length !== evt.plan_total_slides) {
           setSlots(Array.from({ length: evt.plan_total_slides }, (_, i) => ({ index: i, status: 'pending' as const })));
         }
@@ -112,6 +117,7 @@ export default function DeckStudio({
       case 'slide_authoring':
         patchSlot(evt.index, { status: 'authoring', label: evt.label });
         setBuildPhaseLabel(evt.label);
+        if (!userPinnedRef.current) setSelectedSlide(evt.index);
         break;
       case 'phase':
         if (typeof evt.index === 'number') patchSlot(evt.index, { label: evt.label });
@@ -478,7 +484,14 @@ export default function DeckStudio({
               </div>
             )}
           </div>
-          <BuildCanvas slots={slots} selected={selectedSlide} onSelect={setSelectedSlide} />
+          <BuildCanvas
+            slots={slots}
+            selected={selectedSlide}
+            onSelect={(index) => {
+              userPinnedRef.current = true;
+              setSelectedSlide(index);
+            }}
+          />
         </div>
       </div>
     );

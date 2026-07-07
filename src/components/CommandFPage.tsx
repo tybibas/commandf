@@ -701,7 +701,7 @@ export function CommandFPage({
       />
 
       <div
-        className="relative flex-1 flex flex-col min-h-0"
+        className="relative flex-1 flex flex-col min-h-0 min-w-0"
         onDragEnter={(e) => { if ((surface === 'home' || surface === 'chat') && e.dataTransfer.types.includes('Files')) { e.preventDefault(); setDragDepth((d) => d + 1); } }}
         onDragOver={(e) => { if (dragDepth > 0) e.preventDefault(); }}
         onDragLeave={() => setDragDepth((d) => Math.max(0, d - 1))}
