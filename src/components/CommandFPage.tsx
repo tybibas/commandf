@@ -590,6 +590,14 @@ export function CommandFPage({
       ]
   ).map((c) => ({ ...c, onClick: () => selectPrompt(c.question) }));
 
+  // Example cards are ONBOARDING, not daily furniture: a consultant asks "what is
+  // this for" once. Show them only in the true first-run/empty state (no history,
+  // and the list actually loaded — not an errored fetch we'd misread as "new").
+  // Returning users get a clean canvas; the rotating placeholder + the sidebar's
+  // recent chats carry teaching + resume, so always-on cards would just duplicate
+  // both. `loading` only clears after loadSessions resolves, so this never flashes.
+  const showExampleCards = !loading && !sessionsError && sessions.length === 0;
+
   const plusItems = [
     { label: 'Upload a file', icon: Upload, onClick: () => { setShowKnowledge(true); setShowPlus(false); } },
     { label: 'Build a deck', icon: Presentation, onClick: () => { setSurface('deck'); setShowPlus(false); } },
@@ -756,7 +764,7 @@ export function CommandFPage({
             logoSrc={logoSrc}
             composer={composer}
             buildDeckAction={buildDeckAction}
-            exampleCards={exampleCards}
+            exampleCards={showExampleCards ? exampleCards : []}
             docCount={docs}
             lastSync={lastSync ? timeAgo(lastSync) : undefined}
           />

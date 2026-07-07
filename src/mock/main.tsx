@@ -99,7 +99,12 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (path.includes('/models')) return jsonRes({ models: MOCK_MODELS });
     if (path.includes('/costs')) return jsonRes(MOCK_COST_SUMMARY);
     if (path.includes('/sessions') && (init?.method ?? 'GET') === 'DELETE') return jsonRes({ ok: true });
-    if (path.includes('/sessions')) return jsonRes({ sessions: MOCK_SESSIONS });
+    // Harness flag: ?sessions=empty simulates a first-run user (no history) so the
+    // empty-state example cards can be verified without clearing the fixture.
+    if (path.includes('/sessions')) {
+      const empty = new URLSearchParams(window.location.search).get('sessions') === 'empty';
+      return jsonRes({ sessions: empty ? [] : MOCK_SESSIONS });
+    }
     if (path.includes('/briefing')) return jsonRes(MOCK_BRIEFING);
     if (path.includes('/history')) return jsonRes({ history: MOCK_HISTORY });
     if (path.includes('/optimize-prompt')) {

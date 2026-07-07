@@ -17,7 +17,7 @@ const ROTATING_PLACEHOLDERS = [
   'What was our buy-and-build thesis for Acrisure?',
   'Build a first-pass CDD deck for a specialty MGA consolidator',
   'Compare our diligence approach across two portfolio companies',
-  'What synergy assumptions did we use in past roll-up models?',
+  'What were the top risks we flagged in our last diligence?',
 ];
 const ROTATE_MS = 4000;
 
