@@ -3,7 +3,7 @@ import { Presentation } from 'lucide-react';
 import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession, BuildStreamEvent } from './api';
 import {
   undoDeckStream, fetchStudioSession, streamDeckBuild, resolveBuildPreviewUrl,
-  deckSlidePreviewUrl, StreamAbortedError,
+  deckSlidePreviewUrl, StreamAbortedError, generateDeckStatus,
 } from './api';
 import { SurfaceHeader } from './generationUI';
 import DeckChat from './DeckChat';
@@ -70,6 +70,16 @@ export default function DeckStudio({
   const [buildNarration, setBuildNarration] = useState<string[]>([]);
   const [buildPhaseLabel, setBuildPhaseLabel] = useState<string | null>(null);
   const [buildFatalError, setBuildFatalError] = useState<string | null>(null);
+  // §3.6.1: true while the tail is between a dropped connection and a
+  // successful reconnect (or the reconnect cap). Distinct from `buildFatalError`
+  // — a drop is expected/recoverable, not an error, so it gets its own
+  // transient "retrying" copy instead of the misleading "stalled" label.
+  const [buildReconnecting, setBuildReconnecting] = useState(false);
+  // Bumped by `retryBuild` to force the build-tail effect below to re-run even
+  // though `building` never flipped false on the fatal path (a plain
+  // `setBuilding(true)` when it's already `true` is a no-op and would not
+  // re-fire the effect).
+  const [retryNonce, setRetryNonce] = useState(0);
   const slotsRef = useRef(slots);
   slotsRef.current = slots;
 
@@ -131,16 +141,61 @@ export default function DeckStudio({
     }
   }, [patchSlot]);
 
+  // §3.6.1: reconnect budget for a dropped/reconnect_required tail before we
+  // fall back to a status check + a genuinely fatal state.
+  const MAX_RECONNECT_ATTEMPTS = 8;
+  const RECONNECT_BACKOFF_MS = 750;
+
   // Drives the resumable build tail: reconnects with the last cursor seen on
-  // any non-terminal stream end (idle timeout, drop, ASGI ceiling) until
-  // `build_done` or a non-recoverable error. Runs once per job while building.
+  // any non-terminal stream end (idle timeout, drop, ASGI ceiling,
+  // reconnect_required) until `build_done`, a confirmed backend `error`, or a
+  // confirmed-complete deck via `/status`. Runs once per job while building,
+  // and again whenever `retryBuild` bumps `retryNonce`.
   useEffect(() => {
     if (buildStatus !== 'building' || !building) return;
     let cancelled = false;
     const ctrl = new AbortController();
 
+    // Never show a fatal error over a deck that actually finished (or is
+    // still going) server-side — the build runs in the spawned job and
+    // outlives the client's connection (§3.6.1). Returns true once this has
+    // reached a settled outcome (recovered-complete or truly fatal); false
+    // means "still building, keep reconnecting."
+    const resolveViaStatus = async (fallbackMessage: string): Promise<boolean> => {
+      let status;
+      try {
+        status = await generateDeckStatus(jobId);
+      } catch {
+        // Status check itself failed — don't hang forever on an unreachable
+        // backend; surface the caller's message instead.
+        setBuildFatalError(fallbackMessage);
+        return true;
+      }
+      if (status.status === 'complete' || status.status === 'done') {
+        const builtThrough = status.built_through ?? status.slide_count ?? slotsRef.current.length;
+        const rev = status.deck_rev ?? 0;
+        const urls = status.preview_urls?.length
+          ? status.preview_urls
+          : await Promise.all(
+              Array.from({ length: builtThrough }, (_, i) => deckSlidePreviewUrl(jobId, i, rev)),
+            );
+        setDeckRev(rev);
+        setPreviewUrls(urls);
+        buildResumeCursors.delete(jobId);
+        setBuildReconnecting(false);
+        setBuilding(false); // recovered — falls through to the interactive studio
+        return true;
+      }
+      if (status.status === 'error') {
+        setBuildFatalError(status.error || fallbackMessage);
+        return true;
+      }
+      return false; // still 'queued' | 'running' | 'building' — keep reconnecting
+    };
+
     (async () => {
       let cursor = buildResumeCursors.get(jobId) ?? -1;
+      let reconnectAttempts = 0;
       while (!cancelled) {
         try {
           const { terminal, lastCursor } = await streamDeckBuild(jobId, {
@@ -149,6 +204,8 @@ export default function DeckStudio({
           cursor = lastCursor;
           buildResumeCursors.set(jobId, cursor);
           if (terminal) {
+            reconnectAttempts = 0;
+            setBuildReconnecting(false);
             buildResumeCursors.delete(jobId);
             setDeckRev(terminal.deck_rev);
             setSlideOrder(terminal.slide_order);
@@ -169,10 +226,24 @@ export default function DeckStudio({
             break;
           }
           if (cancelled) break;
-          await new Promise((r) => setTimeout(r, 1000)); // brief backoff before reconnect
+          // A clean drop (network error, ERR_HTTP2_PROTOCOL_ERROR, idle
+          // timeout, or a `reconnect_required` handoff) — reconnectable, not
+          // fatal. A single drop must not end this loop.
+          setBuildReconnecting(true);
+          reconnectAttempts += 1;
+          if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+            const settled = await resolveViaStatus('Lost connection to the build and could not reconnect.');
+            if (settled) break;
+            reconnectAttempts = 0; // status confirms it's still building — keep going
+          }
+          await new Promise((r) => setTimeout(r, RECONNECT_BACKOFF_MS));
         } catch (e) {
           if (e instanceof StreamAbortedError) break; // unmount or deliberate cancel
-          setBuildFatalError((e as Error)?.message || 'Build stalled.');
+          // A confirmed non-recoverable `error` event from the backend. Still
+          // confirm against `/status` before showing fatal — the build may
+          // have raced to `build_done` right as the terminal error arrived.
+          setBuildReconnecting(false);
+          await resolveViaStatus((e as Error)?.message || 'The build hit an error.');
           break;
         }
       }
@@ -183,11 +254,12 @@ export default function DeckStudio({
     // the slots ref), so it's intentionally left out to avoid re-subscribing
     // the stream on every slot patch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobId, buildStatus, building]);
+  }, [jobId, buildStatus, building, retryNonce]);
 
   const retryBuild = useCallback(() => {
     setBuildFatalError(null);
-    setBuilding(true);
+    setBuildReconnecting(false);
+    setRetryNonce((n) => n + 1);
   }, []);
   const [batches, setBatches] = useState<ChangelogBatch[]>([]);
   const [slideOrder, setSlideOrder] = useState<string[]>([]);
@@ -378,8 +450,10 @@ export default function DeckStudio({
   if (building) {
     const builtCount = slots.filter((s) => s.status === 'ready').length;
     const buildSubtitle = buildFatalError
-      ? 'Build stalled.'
-      : `Building slide ${Math.min(builtCount + 1, slots.length || 1)} of ${slots.length || '…'}…`;
+      ? buildFatalError
+      : buildReconnecting
+        ? 'Lost connection to the build — retrying…'
+        : `Building slide ${Math.min(builtCount + 1, slots.length || 1)} of ${slots.length || '…'}…`;
     return (
       <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
         <SurfaceHeader icon={Presentation} title="Deck studio" subtitle={buildSubtitle} onBack={onBack} />

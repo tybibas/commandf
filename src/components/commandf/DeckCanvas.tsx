@@ -80,7 +80,13 @@ export default function DeckCanvas({
   const selectedDirty = dirtySlides.has(selected);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-studio-canvas">
+    // `min-w-0` mirrors BuildCanvas's containment fix (DeckBuildView.tsx): this
+    // component is currently only used inside a `flex-1 min-w-0` wrapper (DeckStudio's
+    // ready-mode branch), which already breaks the min-content chain — but declaring
+    // it here too means this "twin" of BuildCanvas can't regress if that wrapper is
+    // ever simplified away, since the filmstrip's shrink-0 tiles would otherwise
+    // force this column past the viewport instead of scrolling.
+    <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-studio-canvas">
       <div className="flex-1 min-h-0 flex items-center justify-center px-8 py-6 overflow-auto scrollbar-thin">
         <div className="relative w-full max-w-3xl aspect-video shrink-0 rounded-image overflow-hidden bg-studio-slide border border-hairline shadow-float">
           {selectedUrl ? (

@@ -113,7 +113,14 @@ export function BuildCanvas({
   const current = slots[Math.min(selected, Math.max(slots.length - 1, 0))];
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-studio-canvas">
+    // `min-w-0` is load-bearing: this div is a direct flex-row item of DeckStudio's
+    // split shell (no intervening wrapper, unlike the ready-mode DeckCanvas which
+    // sits inside a `flex-1 min-w-0` wrapper). Without it, a flex item's automatic
+    // min-width is `auto` (= its content's min-content size), so the filmstrip below
+    // — a `flex` row of shrink-0 tiles whose min-content width is the SUM of every
+    // tile, ignoring its own `overflow-x-auto` — forces this column, the split-shell
+    // row, and the page itself wider than the viewport instead of scrolling.
+    <div className="flex-1 min-h-0 min-w-0 flex flex-col bg-studio-canvas">
       <div className="flex-1 min-h-0 flex items-center justify-center px-8 py-6 overflow-auto scrollbar-thin">
         <div className="relative w-full max-w-3xl aspect-video shrink-0 rounded-image overflow-hidden bg-studio-slide border border-hairline shadow-float">
           {current?.status === 'ready' && current.previewUrl ? (
