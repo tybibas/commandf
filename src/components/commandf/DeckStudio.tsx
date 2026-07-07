@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Presentation } from 'lucide-react';
 import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession, BuildStreamEvent } from './api';
 import {
-  undoDeckStream, fetchStudioSession, streamDeckBuild, resolveBuildPreviewUrl, StreamAbortedError,
+  undoDeckStream, fetchStudioSession, streamDeckBuild, resolveBuildPreviewUrl,
+  deckSlidePreviewUrl, StreamAbortedError,
 } from './api';
 import { SurfaceHeader } from './generationUI';
 import DeckChat from './DeckChat';
@@ -151,9 +152,19 @@ export default function DeckStudio({
             buildResumeCursors.delete(jobId);
             setDeckRev(terminal.deck_rev);
             setSlideOrder(terminal.slide_order);
-            // Assemble the canvas's previewUrls from the build slots, in plan
-            // order — same array shape ResultPanel/DeckCanvas already expect.
-            setPreviewUrls(slotsRef.current.map((s) => s.previewUrl).filter((u): u is string => !!u));
+            // Reconstruct the canvas's previewUrls DETERMINISTICALLY from the
+            // terminal event, NOT from slotsRef: pages 1..built_through are exactly
+            // the successfully-rendered slides. Reading slotsRef here dropped the
+            // final slide(s) whenever the last slide_ready's DETACHED preview
+            // resolve + React commit hadn't landed before this flush (the slot
+            // still had previewUrl: undefined and got filtered out). `deckSlidePreviewUrl`
+            // takes a 0-based index and emits the 1-based /preview/{n} path, so
+            // iterate 0..built_through-1 for exactly built_through entries in page order.
+            const urls = await Promise.all(
+              Array.from({ length: terminal.built_through }, (_, i) =>
+                deckSlidePreviewUrl(jobId, i, terminal.deck_rev)),
+            );
+            setPreviewUrls(urls);
             setBuilding(false);
             break;
           }
@@ -192,6 +203,10 @@ export default function DeckStudio({
 
   // B-reflection (§4): open the studio session for build-format options + grounding
   // provenance, and seed the authoritative slide_order (id→position) for the changelog.
+  // Re-runs once when `building` flips false: the mid-build fetch reflects an
+  // under-populated content_pool/style_exemplars, so the grounding must be
+  // refreshed once the deck finishes building. Normal (already-built) mounts start
+  // with building=false and so fetch exactly once.
   useEffect(() => {
     let live = true;
     (async () => {
@@ -209,7 +224,7 @@ export default function DeckStudio({
       }
     })();
     return () => { live = false; };
-  }, [jobId]);
+  }, [jobId, building]);
 
   const onSelectFormat = useCallback(async (format: string) => {
     setActiveFormat(format); // optimistic — the selector reflects immediately
