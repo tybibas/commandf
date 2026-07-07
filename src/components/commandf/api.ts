@@ -930,7 +930,11 @@ export type BuildStreamEvent =
   | { event: 'narration'; index: number; text: string; cursor: number }
   | { event: 'heartbeat' }
   | { event: 'build_done'; deck_rev: number; built_through: number; plan_total_slides: number; slide_order: string[]; cursor: number }
-  | { event: 'error'; recoverable: boolean; index?: number; message: string; cursor?: number };
+  | { event: 'error'; recoverable: boolean; index?: number; message: string; cursor?: number }
+  // §3.6.1: the backend voluntarily closes the stream ~570s in (ahead of the
+  // 600s ASGI ceiling) rather than let it die abruptly. NOT terminal, NOT an
+  // error — the client reconnects with `from_cursor: cursor`.
+  | { event: 'reconnect_required'; cursor: number };
 
 export type BuildDoneResult = { deck_rev: number; built_through: number; plan_total_slides: number; slide_order: string[] };
 
@@ -952,12 +956,18 @@ export async function startDeckBuild(approvedPlan: Record<string, unknown>, opts
  *  every event line (including `heartbeat`, which the caller can ignore).
  *
  *  Resumability contract: this call can END WITHOUT a terminal event (an idle
- *  timeout, a network drop, the ASGI ceiling) — that is NOT a failure. It
- *  resolves with `{ terminal: null, lastCursor }` so the caller reconnects with
- *  `fromCursor: lastCursor`. It resolves with `{ terminal: {...}, lastCursor }`
- *  only once `build_done` arrives. It THROWS only on a non-recoverable `error`
- *  or an explicit abort (StreamAbortedError) — a recoverable per-slide `error`
- *  is delivered via `onEvent` and the tail keeps going. */
+ *  timeout, a network drop, the ASGI ceiling, a clean `reconnect_required`) —
+ *  that is NOT a failure. It resolves with `{ terminal: null, lastCursor }` so
+ *  the caller reconnects with `fromCursor: lastCursor`. It resolves with
+ *  `{ terminal: {...}, lastCursor }` only once `build_done` arrives. It THROWS
+ *  only on a deliberate abort (StreamAbortedError, from either the caller's
+ *  `signal` or the internal idle timeout) — a recoverable per-slide `error` is
+ *  delivered via `onEvent` and the tail keeps going, and ANY OTHER thrown error
+ *  (a dropped fetch, `ERR_HTTP2_PROTOCOL_ERROR`, a network failure) is treated
+ *  as a reconnectable drop and resolves `{ terminal: null, lastCursor }` too —
+ *  never rethrown as fatal (§3.6.1: the 600s ASGI ceiling guarantees a stream
+ *  this abrupt on any build past ~10 minutes; the build itself is unaffected,
+ *  it keeps running in the spawned job). */
 export async function streamDeckBuild(
   jobId: string,
   opts: { fromCursor?: number; onEvent: (evt: BuildStreamEvent) => void; signal?: AbortSignal },
@@ -1004,6 +1014,12 @@ export async function streamDeckBuild(
         if (!line) continue;
         const evt = JSON.parse(line.slice(6)) as BuildStreamEvent;
         if ('cursor' in evt && typeof evt.cursor === 'number') lastCursor = evt.cursor;
+        if (evt.event === 'reconnect_required') {
+          // Clean, expected handoff ahead of the 600s ASGI ceiling — NOT
+          // forwarded to onEvent (nothing for the UI to render), just ends
+          // this tail non-terminally so the caller reconnects from lastCursor.
+          return { terminal: null, lastCursor };
+        }
         onEvent(evt);
         if (evt.event === 'build_done') {
           terminal = {
@@ -1021,7 +1037,12 @@ export async function streamDeckBuild(
     if ((e as { name?: string })?.name === 'AbortError' || internalCtrl.signal.aborted || externalAborted) {
       throw new StreamAbortedError();
     }
-    throw e;
+    // Any other thrown error (dropped fetch, ERR_HTTP2_PROTOCOL_ERROR, a
+    // network failure) is a reconnectable drop, not a fatal failure — the
+    // build runs server-side in the spawned job and is unaffected by the
+    // client's connection dying (§3.6.1). Resolve non-terminal with the last
+    // cursor seen so the caller reconnects instead of surfacing an error.
+    return { terminal: null, lastCursor };
   } finally {
     clearTimeout(idleTimer);
   }
