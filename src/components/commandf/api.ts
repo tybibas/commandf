@@ -821,6 +821,93 @@ export async function sendDeckChatStream(
   return streamDeckSSE(`/generate-deck/${encodeURIComponent(jobId)}/chat`, { message }, handlers, signal);
 }
 
+// ── Outline-generation stream (§3.5) ────────────────────────────────────────
+// Replaces the dead synchronous wait on POST /generate-deck/outline. The event
+// vocabulary is DIFFERENT from the §3.1 edit stream (phase/heartbeat/outline_ready/
+// error, no ops), so it gets its own reader — but the SSE plumbing (abort combine,
+// idle timer, `data: {json}\n\n` framing) is identical.
+export type OutlineStreamEvent =
+  | { event: 'phase'; phase: string; label: string }
+  | { event: 'heartbeat' }
+  | { event: 'outline_ready'; outline: DeckOutline }
+  | { event: 'error'; recoverable: boolean; message: string };
+
+/** Streaming outline draft (§3.5). Same request body + auth as the sync
+ *  `generateDeckOutline`. Drives `onPhase(label)` off the `phase` events and
+ *  resolves with the FULL outline dict from the terminal `outline_ready` (fed
+ *  straight to <DeckOutline>). A terminal `error` throws.
+ *
+ *  Idle budget is 60s (≥ the ~30-45s Modal cold-start-to-first-byte window; the
+ *  contract flushes `starting` ASAP once warm, then ~10s heartbeats keep it alive).
+ *  The timer is reset on EVERY chunk read — heartbeats included — so a legitimately
+ *  long planning call is never mistaken for a hang. */
+export async function streamDeckOutline(
+  input: {
+    request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
+    file_ids?: string[]; target_slides?: number;
+  },
+  handlers: { onPhase?: (label: string) => void },
+  signal?: AbortSignal,
+): Promise<DeckOutline> {
+  const IDLE_MS = 60_000;
+  const path = '/generate-deck/outline/stream';
+  const url = requireUrl();
+
+  const internalCtrl = new AbortController();
+  const combined = signal
+    ? (AbortSignal as any).any?.([signal, internalCtrl.signal]) ?? internalCtrl.signal
+    : internalCtrl.signal;
+  let externalAborted = false;
+  signal?.addEventListener('abort', () => { externalAborted = true; internalCtrl.abort(); });
+
+  let idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS);
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS); };
+
+  try {
+    const res = await fetch(`${url}${path}`, {
+      method: 'POST',
+      headers: { ...(await authHeaders()), 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: combined,
+    });
+    if (res.status === 404 || res.status === 501) throw new EndpointPendingError(path);
+    if (!res.ok || !res.body) throw new Error(`outline stream failed (${res.status})`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    let outline: DeckOutline | null = null;
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      resetIdle();  // reset on every event, heartbeat included
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() ?? '';
+      for (const p of parts) {
+        const line = p.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const evt = JSON.parse(line.slice(6)) as OutlineStreamEvent;
+        switch (evt.event) {
+          case 'phase': handlers.onPhase?.(evt.label); break;
+          case 'heartbeat': break;  // keep-alive only; idle timer already reset
+          case 'outline_ready': outline = evt.outline; break;  // TERMINAL success
+          case 'error': throw new Error(evt.message || 'Could not draft the outline.');  // TERMINAL failure
+        }
+      }
+      if (outline) return outline;  // terminal — stop reading
+    }
+    if (!outline) throw new Error('outline stream ended without an outline');
+    return outline;
+  } catch (e: any) {
+    if (e?.name === 'AbortError' || internalCtrl.signal.aborted || externalAborted) {
+      throw new StreamAbortedError();
+    }
+    throw e;
+  } finally {
+    clearTimeout(idleTimer);
+  }
+}
+
 /** Undo a committed batch (`{batch_id}`) or a single op (`{op_id}`). Server-
  *  authoritative + $0 IR replay (R1): the backend streams the INVERSE ops back
  *  through the SAME §3.1 event shape, so the canvas reconciles exactly as it does

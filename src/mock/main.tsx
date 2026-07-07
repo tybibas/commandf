@@ -131,7 +131,26 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     if (path.includes('/sources/status')) return jsonRes({ google_drive: true, dropbox: false });
     if (path.includes('/sync/status')) return jsonRes({ status: 'complete' });
     if (path.includes('/sync')) return jsonRes({ ok: true });
-    // Deck: outline (sync) → build (job) → status.
+    // Deck: outline stream (§3.5) → phases → outline_ready. Must precede the sync
+    // handler (the stream path also contains '/generate-deck/outline').
+    if (path.includes('/generate-deck/outline/stream')) {
+      const b = parseBody(init);
+      if (/fail/i.test(String(b.request ?? ''))) {
+        return sseRes([
+          { event: 'phase', phase: 'starting', label: 'Starting…' },
+          { event: 'phase', phase: 'retrieving', label: 'Retrieving evidence…' },
+          { event: 'error', recoverable: false, message: 'No evidence matched this brief. Try naming the client or topic more specifically.' },
+        ], 400);
+      }
+      return sseRes([
+        { event: 'phase', phase: 'starting', label: 'Starting…' },
+        { event: 'phase', phase: 'retrieving', label: 'Retrieving evidence…' },
+        { event: 'phase', phase: 'planning', label: 'Planning the slides…' },
+        { event: 'heartbeat' },
+        { event: 'outline_ready', outline: MOCK_OUTLINE },
+      ], 500);
+    }
+    // Deck: outline (sync fallback) → build (job) → status.
     if (path.includes('/generate-deck/outline')) {
       await new Promise((r) => setTimeout(r, 600)); // let the "Drafting outline…" state show
       return jsonRes(MOCK_OUTLINE);

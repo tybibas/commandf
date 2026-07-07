@@ -6,8 +6,8 @@ import {
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 import {
-  generateDeck, generateDeckStatus, generateDeckOutline, editDeckSlide,
-  DECK_ENUM_TYPES, EndpointPendingError, type DeckOutline as Outline,
+  generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide,
+  DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError, type DeckOutline as Outline,
 } from './api';
 import { useJob } from './useJob';
 import ComposerTools from './ComposerTools';
@@ -78,6 +78,10 @@ const TYPES: DeckType[] = [
 ];
 
 const DECK_PHASES = ['Retrieving evidence…', 'Drafting the storyline…', 'Laying out slides…', 'Assembling the .pptx…'];
+// Fallback narration for the cold-start window BEFORE the first §3.5 phase event
+// arrives (the ~30-45s Modal wake). Mirrors the contract's phase labels; once the
+// real stream speaks, `outlineProgress` leads and this canned timer stops.
+const OUTLINE_PHASES = ['Waking the planner…', 'Retrieving evidence…', 'Planning the slides…'];
 const CAPABILITIES = [
   { icon: Database, text: 'Grounded in your indexed work' },
   { icon: Layers, text: 'Partner-grade storyline, not just slides' },
@@ -119,6 +123,10 @@ export default function DeckSurface({
   const [outline, setOutline] = useState<Outline | null>(null);
   const [outlinePhase, setOutlinePhase] = useState<OutlinePhase>('idle');
   const [outlineError, setOutlineError] = useState('');
+  // Live "agent thinking" line, driven off the §3.5 stream's phase events. Empty
+  // until the first phase arrives (during the cold-start wake, RunningPanel's
+  // canned phases step as the fallback), then the real label leads.
+  const [outlineProgress, setOutlineProgress] = useState('');
 
   // The approved plan the current deck was built from — needed so a per-slide
   // edit can re-author one slide in the SAME plan context (no re-plan).
@@ -176,14 +184,18 @@ export default function DeckSurface({
 
   const draftOutline = async () => {
     if (!canGo || outlinePhase === 'loading') return;
-    setOutlinePhase('loading'); setOutlineError('');
+    setOutlinePhase('loading'); setOutlineError(''); setOutlineProgress('');
     try {
-      const o = await generateDeckOutline({
-        request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-        session_id: sessionId, file_ids: fileIds, target_slides: fullCount,
-      });
+      const o = await streamDeckOutline(
+        {
+          request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
+          session_id: sessionId, file_ids: fileIds, target_slides: fullCount,
+        },
+        { onPhase: (label) => setOutlineProgress(label) },
+      );
       setOutline(o); setOutlinePhase('idle');
     } catch (e: any) {
+      if (e instanceof StreamAbortedError) { setOutlinePhase('idle'); return; }  // user/idle cancel — no error state
       if (e instanceof EndpointPendingError) setOutlinePhase('pending');
       else { setOutlinePhase('error'); setOutlineError(e?.message || 'Could not draft the outline.'); }
     }
@@ -374,6 +386,12 @@ export default function DeckSurface({
           </div>
         </div>
 
+        {/* Live "agent thinking" — §3.5 phase events drive the status line; the
+            canned OUTLINE_PHASES step only during the cold-start gap before the
+            first phase arrives. Button → live phases → outline approval, one flow. */}
+        {outlinePhase === 'loading' && (
+          <RunningPanel label="Drafting the outline…" phases={OUTLINE_PHASES} progress={outlineProgress} />
+        )}
         {outlinePhase === 'error' && <p className="mt-3 text-caption text-error leading-relaxed">{outlineError}</p>}
         {outlinePhase === 'pending' && (
           <div className="mt-3 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3">
@@ -433,7 +451,7 @@ export default function DeckSurface({
   }
 
   function resetAll() {
-    setOutline(null); setOutlinePhase('idle'); setOutlineError('');
+    setOutline(null); setOutlinePhase('idle'); setOutlineError(''); setOutlineProgress('');
     setBuiltPlan(null); setEditBusy(null); setEditError(null); setEditedResult(null); job.reset();
   }
 }
