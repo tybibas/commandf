@@ -287,6 +287,10 @@ const T_HISTORY = 15000; // a single conversation's messages
 const T_BRIEFING = 12000; // knowledge briefing (count RPC can be slow)
 const T_MUTATE = 20000;  // write operations: sync, delete, upload, optimize-prompt
 const T_GEN = 30000;     // generation submits and status polls (deck, survey, upload)
+// Outline stream idle budget (§3.5): belt-and-suspenders vs. a cold Modal wake
+// (~30-45s to first byte) ON TOP OF a real planning call. Reset on every SSE
+// event (heartbeats included), so this is a hang guard, not a hard call ceiling.
+const T_OUTLINE = 90000;
 
 /** fetch() with an AbortController-backed timeout. Rejects with
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
@@ -849,7 +853,7 @@ export async function streamDeckOutline(
   handlers: { onPhase?: (label: string) => void },
   signal?: AbortSignal,
 ): Promise<DeckOutline> {
-  const IDLE_MS = 60_000;
+  const IDLE_MS = T_OUTLINE;
   const path = '/generate-deck/outline/stream';
   const url = requireUrl();
 
@@ -906,6 +910,138 @@ export async function streamDeckOutline(
   } finally {
     clearTimeout(idleTimer);
   }
+}
+
+// ── Build-time copilot (§3.6) — live, resumable build stream ────────────────
+// Replaces the one-shot `POST /generate-deck` + post-hoc studio open. The
+// studio now mounts the INSTANT the build job exists and watches it author
+// slide-by-slide. Event vocabulary is build-specific (build_start/slide_planned/
+// slide_authoring/slide_ready/narration), each carrying a monotonic `cursor` —
+// the resume key for `?from_cursor=` after a dropped connection, a page
+// refresh, or the 600s ASGI ceiling (the build itself runs in the spawned job
+// and is unaffected). Terminal is exactly one of `build_done` / non-recoverable
+// `error`, mirroring §3.5's discipline.
+export type BuildStreamEvent =
+  | { event: 'build_start'; job_id: string; plan_total_slides: number; deck_rev: number; cursor: number }
+  | { event: 'slide_planned'; index: number; slide_id: string; slide_template: string; lede: string; cursor: number }
+  | { event: 'slide_authoring'; index: number; label: string; cursor: number }
+  | { event: 'phase'; index?: number; label: string; state: 'active' | 'done'; cursor: number }
+  | { event: 'slide_ready'; index: number; slide_id: string; built_through: number; preview_url: string; cursor: number }
+  | { event: 'narration'; index: number; text: string; cursor: number }
+  | { event: 'heartbeat' }
+  | { event: 'build_done'; deck_rev: number; built_through: number; plan_total_slides: number; slide_order: string[]; cursor: number }
+  | { event: 'error'; recoverable: boolean; index?: number; message: string; cursor?: number };
+
+export type BuildDoneResult = { deck_rev: number; built_through: number; plan_total_slides: number; slide_order: string[] };
+
+/** `POST /generate-deck/build` — thin, non-streaming. Body mirrors `generateDeck`'s
+ *  request shape (the approved outline plan + the same framing fields) minus the
+ *  chunked-build `deck_scope`/`section_*` params, which don't apply here: the
+ *  build loop always authors the WHOLE approved plan, slide by slide, live.
+ *  Returns immediately (202) with the job id; the studio mounts against it right
+ *  away and the build streams in via `streamDeckBuild`. */
+export async function startDeckBuild(approvedPlan: Record<string, unknown>, opts?: {
+  request?: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
+  file_ids?: string[]; target_slides?: number;
+}): Promise<{ job_id: string }> {
+  return postJob('/generate-deck/build', JSON.stringify({ approved_plan: approvedPlan, ...opts }), false);
+}
+
+/** Tails the live build (§3.6) from `fromCursor` (-1 = from the start) via
+ *  `GET /generate-deck/{jobId}/build/stream?from_cursor=N`. Fires `onEvent` for
+ *  every event line (including `heartbeat`, which the caller can ignore).
+ *
+ *  Resumability contract: this call can END WITHOUT a terminal event (an idle
+ *  timeout, a network drop, the ASGI ceiling) — that is NOT a failure. It
+ *  resolves with `{ terminal: null, lastCursor }` so the caller reconnects with
+ *  `fromCursor: lastCursor`. It resolves with `{ terminal: {...}, lastCursor }`
+ *  only once `build_done` arrives. It THROWS only on a non-recoverable `error`
+ *  or an explicit abort (StreamAbortedError) — a recoverable per-slide `error`
+ *  is delivered via `onEvent` and the tail keeps going. */
+export async function streamDeckBuild(
+  jobId: string,
+  opts: { fromCursor?: number; onEvent: (evt: BuildStreamEvent) => void; signal?: AbortSignal },
+): Promise<{ terminal: BuildDoneResult | null; lastCursor: number }> {
+  const IDLE_MS = 90_000;
+  const { fromCursor = -1, onEvent, signal } = opts;
+  const url = requireUrl();
+  const path = `/generate-deck/${encodeURIComponent(jobId)}/build/stream?from_cursor=${fromCursor}`;
+
+  const internalCtrl = new AbortController();
+  const anyAbortSignal = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
+  const combined = signal
+    ? anyAbortSignal.any?.([signal, internalCtrl.signal]) ?? internalCtrl.signal
+    : internalCtrl.signal;
+  let externalAborted = false;
+  signal?.addEventListener('abort', () => { externalAborted = true; internalCtrl.abort(); });
+
+  let idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS);
+  const resetIdle = () => { clearTimeout(idleTimer); idleTimer = setTimeout(() => internalCtrl.abort(), IDLE_MS); };
+
+  let lastCursor = fromCursor;
+  let terminal: BuildDoneResult | null = null;
+  try {
+    const token = await bearer();
+    const res = await fetch(`${url}${path}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}` },
+      signal: combined,
+    });
+    if (res.status === 404 || res.status === 501) throw new EndpointPendingError(path);
+    if (!res.ok || !res.body) throw new Error(`build stream failed (${res.status})`);
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      resetIdle();
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split('\n\n');
+      buf = parts.pop() ?? '';
+      for (const p of parts) {
+        const line = p.split('\n').find((l) => l.startsWith('data: '));
+        if (!line) continue;
+        const evt = JSON.parse(line.slice(6)) as BuildStreamEvent;
+        if ('cursor' in evt && typeof evt.cursor === 'number') lastCursor = evt.cursor;
+        onEvent(evt);
+        if (evt.event === 'build_done') {
+          terminal = {
+            deck_rev: evt.deck_rev, built_through: evt.built_through,
+            plan_total_slides: evt.plan_total_slides, slide_order: evt.slide_order,
+          };
+        } else if (evt.event === 'error' && !evt.recoverable) {
+          throw new Error(evt.message || 'Build failed.');
+        }
+      }
+      if (terminal) break;
+    }
+    return { terminal, lastCursor };
+  } catch (e: unknown) {
+    if ((e as { name?: string })?.name === 'AbortError' || internalCtrl.signal.aborted || externalAborted) {
+      throw new StreamAbortedError();
+    }
+    throw e;
+  } finally {
+    clearTimeout(idleTimer);
+  }
+}
+
+/** Resolves a `slide_ready.preview_url` (a server-relative path, e.g.
+ *  `/generate-deck/{job_id}/preview/1`) into an absolute, token-authed URL an
+ *  `<img>` can load — same `?token=` pattern as `deckSlidePreviewUrl` (an `<img>`
+ *  can't send an Authorization header). Dev harness: `__commandfMockPreview`
+ *  fixtures already return loadable urls/data-URIs, so they pass through as-is. */
+export async function resolveBuildPreviewUrl(previewUrl: string): Promise<string> {
+  const mock = (window as unknown as { __commandfMockPreview?: (i: number, rev: number) => string })
+    .__commandfMockPreview;
+  if (mock) return previewUrl;
+  const url = requireUrl();
+  const abs = previewUrl.startsWith('http') ? previewUrl : `${url}${previewUrl}`;
+  const token = await currentToken();
+  if (!token) return abs;
+  const sep = abs.includes('?') ? '&' : '?';
+  return `${abs}${sep}token=${encodeURIComponent(token)}`;
 }
 
 /** Undo a committed batch (`{batch_id}`) or a single op (`{op_id}`). Server-

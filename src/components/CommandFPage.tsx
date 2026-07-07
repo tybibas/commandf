@@ -112,7 +112,11 @@ export function CommandFPage({
   // studio →". Kept even after leaving the studio surface so the command
   // palette can jump straight back in without re-opening the build panel.
   const [deckStudioSeed, setDeckStudioSeed] = useState<{
-    jobId: string; seed: import('./commandf/api').JobStatus; approvedPlan: Record<string, unknown> | null;
+    jobId: string; seed: import('./commandf/api').JobStatus | null; approvedPlan: Record<string, unknown> | null;
+    // §3.6: set when the studio is opened against an in-flight build (no
+    // completed JobStatus yet) rather than a finished deck's "Edit in studio →".
+    buildStatus?: 'building';
+    planTotalSlides?: number;
   } | null>(null);
   const [steps, setSteps] = useState<ThinkingStep[]>([]);  // live agent progress
   // Accumulated text from delta SSE events — shown as a draft assistant bubble
@@ -525,7 +529,8 @@ export function CommandFPage({
   // with the just-built deck. Kept as its own callback (rather than inlining in
   // DeckSurface) so the palette can re-open the same seed later.
   const openDeckStudio = useCallback((args: {
-    jobId: string; seed: import('./commandf/api').JobStatus; approvedPlan: Record<string, unknown> | null;
+    jobId: string; seed: import('./commandf/api').JobStatus | null; approvedPlan: Record<string, unknown> | null;
+    buildStatus?: 'building'; planTotalSlides?: number;
   }) => {
     setDeckStudioSeed(args);
     setSurface('deckstudio');
@@ -719,6 +724,8 @@ export function CommandFPage({
             seed={deckStudioSeed.seed}
             clientSlug={activeContext}
             sessionId={sessionId}
+            buildStatus={deckStudioSeed.buildStatus ?? 'ready'}
+            planTotalSlides={deckStudioSeed.planTotalSlides}
           />
         ) : surface === 'spend' ? (
           <SpendPanel onBack={() => setSurface('home')} />
