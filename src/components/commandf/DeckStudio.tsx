@@ -61,6 +61,10 @@ export default function DeckStudio({
   const [deckRev, setDeckRev] = useState(seed?.deck_rev ?? (buildStatus === 'building' ? 0 : 1));
   const [previewUrls, setPreviewUrls] = useState<string[]>(seed?.preview_urls ?? []);
   const [selectedSlide, setSelectedSlide] = useState(0);
+  // Latest `deckRev` for async reconstructions below that must not close over a
+  // stale value (an edit landing mid-fetch would otherwise bust the wrong rev).
+  const deckRevRef = useRef(deckRev);
+  deckRevRef.current = deckRev;
 
   // P0-1 belt-and-braces: keep the per-session local pointer in step with
   // whatever revision of this job is on screen — every path that bumps
@@ -73,6 +77,39 @@ export default function DeckStudio({
   useEffect(() => {
     if (jobId) writeDeckPointer(sessionId ?? null, { job_id: jobId, deck_rev: deckRev });
   }, [jobId, deckRev, sessionId]);
+
+  // P0-1 polish: a "Resume deck" open for an already-complete job seeds the
+  // studio straight into ready mode (buildStatus !== 'building'), so the
+  // build-tail effect below — the only place that already knows how to
+  // reconstruct `previewUrls` from `built_through` when `/status` omits
+  // `preview_urls` (see `resolveViaStatus` below) — never runs. Without this,
+  // a seeded-complete mount with an empty `seed.preview_urls` sits on "No
+  // slide selected" with an empty filmstrip until the user sends an edit.
+  // Mirror that same reconstruction here, once, only when the seed left the
+  // canvas empty. `deckRev` is read from the ref (not the closed-over value)
+  // so a build-tail/edit that lands before this async resolves still busts
+  // the right revision on the `?v=` query param.
+  useEffect(() => {
+    if (buildStatus === 'building') return; // build-tail effect owns this case
+    if (previewUrls.length > 0) return; // seed already carried them — nothing to do
+    const builtThrough = seed?.built_through ?? seed?.slide_count;
+    if (!jobId || !builtThrough) return; // nothing built yet to reconstruct
+    let live = true;
+    (async () => {
+      const urls = await Promise.all(
+        Array.from({ length: builtThrough }, (_, i) =>
+          deckSlidePreviewUrl(jobId, i, deckRevRef.current).then(preloadPreviewImage)),
+      );
+      if (!live) return;
+      setPreviewUrls(urls);
+      setSelectedSlide(0);
+    })();
+    return () => { live = false; };
+    // Intentionally mount-scoped (jobId only): `seed`/`buildStatus` are fixed
+    // props for this component's lifetime, and `previewUrls.length > 0` above
+    // already guards against re-running once a later edit populates it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
 
   // ── §3.6 build-mode state — live while `buildStatus==='building'`, then the
   // component permanently flips to the existing interactive studio below. ──
@@ -119,6 +156,13 @@ export default function DeckStudio({
   }, []);
 
   const handleBuildEvent = useCallback((evt: BuildStreamEvent) => {
+    // §3.6.1 fix: any event reaching here means the stream is flowing again —
+    // clear a stale "Lost connection to the build — retrying…" banner on the
+    // FIRST event received after a reconnect, rather than waiting for
+    // `build_done`/`resolveViaStatus` (which could be minutes away while
+    // slides visibly keep advancing underneath the stuck banner). A no-op
+    // `setState` when it's already false.
+    setBuildReconnecting(false);
     switch (evt.event) {
       case 'build_start':
         userPinnedRef.current = false;
