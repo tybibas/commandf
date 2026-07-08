@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Presentation } from 'lucide-react';
+import { Download, Loader2, Presentation } from 'lucide-react';
 import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession, BuildStreamEvent } from './api';
 import {
   undoDeckStream, fetchStudioSession, streamDeckBuild, resolveBuildPreviewUrl,
   deckSlidePreviewUrl, StreamAbortedError, generateDeckStatus,
+  authedDownloadUrl, deckDownloadUrl,
 } from './api';
 import { SurfaceHeader } from './generationUI';
+import { preloadPreviewImage } from './previewPool';
 import DeckChat from './DeckChat';
 import DeckCanvas from './DeckCanvas';
 import DeckChangelog, { type ChangelogBatch } from './DeckChangelog';
@@ -183,7 +185,8 @@ export default function DeckStudio({
         const urls = status.preview_urls?.length
           ? status.preview_urls
           : await Promise.all(
-              Array.from({ length: builtThrough }, (_, i) => deckSlidePreviewUrl(jobId, i, rev)),
+              Array.from({ length: builtThrough }, (_, i) =>
+                deckSlidePreviewUrl(jobId, i, rev).then(preloadPreviewImage)),
             );
         setDeckRev(rev);
         setPreviewUrls(urls);
@@ -225,7 +228,7 @@ export default function DeckStudio({
             // iterate 0..built_through-1 for exactly built_through entries in page order.
             const urls = await Promise.all(
               Array.from({ length: terminal.built_through }, (_, i) =>
-                deckSlidePreviewUrl(jobId, i, terminal.deck_rev)),
+                deckSlidePreviewUrl(jobId, i, terminal.deck_rev).then(preloadPreviewImage)),
             );
             setPreviewUrls(urls);
             setBuilding(false);
@@ -267,6 +270,33 @@ export default function DeckStudio({
     setBuildReconnecting(false);
     setRetryNonce((n) => n + 1);
   }, []);
+
+  // ── P0-2: .pptx download control (Deck Studio has no export affordance
+  // today — the only download button lives on the one-shot ResultPanel, which
+  // Deck Studio never mounts). The backend 409s until the job is `complete`,
+  // so only resolve the signed href once the build has finished (`!building`);
+  // while building it's disabled rather than pointing at a URL that 409s.
+  const [downloadHref, setDownloadHref] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (!jobId || building) { setDownloadHref(null); return; }
+    authedDownloadUrl(deckDownloadUrl(jobId)).then((href) => { if (alive) setDownloadHref(href); });
+    return () => { alive = false; };
+  }, [jobId, building]);
+
+  const downloadButton = jobId ? (
+    <a
+      href={downloadHref ?? undefined}
+      download
+      aria-disabled={!downloadHref}
+      aria-label="Download .pptx"
+      title={building ? 'Finishing the build…' : 'Download .pptx'}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-caption border border-border-light text-text-primary hover:bg-bg-tertiary active:scale-[0.98] transition-colors duration-fast ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0 ${downloadHref ? '' : 'opacity-40 pointer-events-none'}`}
+    >
+      {building ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.75} />}
+      Download
+    </a>
+  ) : null;
   const [batches, setBatches] = useState<ChangelogBatch[]>([]);
   const [slideOrder, setSlideOrder] = useState<string[]>([]);
   const [phase, setPhase] = useState<{ label: string; state: 'active' | 'done' } | null>(null);
@@ -462,7 +492,7 @@ export default function DeckStudio({
         : `Building slide ${Math.min(builtCount + 1, slots.length || 1)} of ${slots.length || '…'}…`;
     return (
       <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
-        <SurfaceHeader icon={Presentation} title="Deck studio" subtitle={buildSubtitle} onBack={onBack} />
+        <SurfaceHeader icon={Presentation} title="Deck studio" subtitle={buildSubtitle} onBack={onBack} actions={downloadButton} />
         <div className="flex-1 min-h-0 flex -mx-6 md:-mx-7 border-t border-border-light">
           <div className="w-[380px] shrink-0 min-w-0 flex flex-col border-r border-border-light bg-bg-primary">
             <BuildNarrationColumn
@@ -499,7 +529,7 @@ export default function DeckStudio({
 
   return (
     <div className="relative flex-1 min-h-0 flex flex-col px-6 pt-4 md:px-7">
-      <SurfaceHeader icon={Presentation} title={seed?.title || 'Deck studio'} subtitle={subtitle} onBack={onBack} />
+      <SurfaceHeader icon={Presentation} title={seed?.title || 'Deck studio'} subtitle={subtitle} onBack={onBack} actions={downloadButton} />
 
       <div className="flex-1 min-h-0 flex -mx-6 md:-mx-7 border-t border-border-light">
         <div

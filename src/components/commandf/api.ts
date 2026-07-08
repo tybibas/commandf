@@ -1091,6 +1091,15 @@ export async function authedDownloadUrl(downloadUrl: string): Promise<string> {
   return `${downloadUrl}${sep}token=${encodeURIComponent(token)}`;
 }
 
+/** Absolute `.pptx` download URL for a deck job (P0-2 Deck Studio download
+ *  control). Mirrors the shape of a one-shot job's `result.download_url`, but
+ *  built locally since Deck Studio only ever holds a bare `jobId` prop — pass
+ *  the result through `authedDownloadUrl` for the signed `<a download>` href. */
+export function deckDownloadUrl(jobId: string): string {
+  const url = requireUrl();
+  return `${url}/generate-deck/${encodeURIComponent(jobId)}/download`;
+}
+
 export async function generateSurveyCompendium(file: File, title?: string): Promise<{ job_id: string }> {
   const form = new FormData();
   form.append('file', file);

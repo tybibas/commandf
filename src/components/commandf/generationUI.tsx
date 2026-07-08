@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode } from 'react';
 import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers, Wand2, X, ChevronDown } from 'lucide-react';
 import { authedDownloadUrl, type JobStatus } from './api';
 
@@ -8,8 +8,8 @@ const PILL_BTN = `bg-structure text-structure-ink hover:bg-structure-hover activ
 const GHOST_BTN = `border border-border-light text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`;
 
 export function SurfaceHeader({
-  icon: Icon, title, subtitle, onBack,
-}: { icon: typeof ArrowLeft; title: string; subtitle: string; onBack: () => void }) {
+  icon: Icon, title, subtitle, onBack, actions,
+}: { icon: typeof ArrowLeft; title: string; subtitle: string; onBack: () => void; actions?: ReactNode }) {
   return (
     <div className="mb-6">
       <div className="flex items-center gap-3">
@@ -22,7 +22,8 @@ export function SurfaceHeader({
           <ArrowLeft className="w-4 h-4" />
         </button>
         <Icon className="w-4 h-4 text-text-secondary shrink-0" strokeWidth={1.75} aria-hidden />
-        <h1 className="text-body font-medium tracking-tight text-text-primary leading-tight">{title}</h1>
+        <h1 className="flex-1 min-w-0 text-body font-medium tracking-tight text-text-primary leading-tight truncate">{title}</h1>
+        {actions && <div className="shrink-0 flex items-center gap-2">{actions}</div>}
       </div>
       <p className="text-body text-text-muted mt-1 ml-11">{subtitle}</p>
     </div>
