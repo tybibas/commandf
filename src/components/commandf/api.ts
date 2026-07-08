@@ -680,6 +680,44 @@ export async function generateDeckStatus(jobId: string): Promise<JobStatus> {
   return json<JobStatus>(res);
 }
 
+// ── P0-1: session→job rehydration (Actionist/COMMANDF_DEMO_RUN_PROBLEMS_2026-07-07.md) ──
+// The BE now persists `session_id` on `commandf_jobs` (sent in generateDeck's /
+// startDeckBuild's request bodies below) and exposes a by-session lookup so a
+// reopened/reloaded session can find its deck job again — the only key that
+// unlocks Deck Studio (`job_id`) previously lived in React state only.
+export type DeckJobBySession = {
+  job_id: string;
+  session_id: string;
+  status: JobStatus['status'];
+  slide_count?: number;
+  title?: string;
+  download_url?: string | null;
+  placeholders?: string[];
+  plan?: Record<string, unknown>;
+  deck_scope?: 'full' | 'section';
+  section_start?: number;
+  built_through?: number;
+  plan_total_slides?: number;
+  error?: string;
+};
+
+/** `GET /generate-deck/by-session/{session_id}` — the latest deck job tied to a
+ *  chat session, for rehydrating Deck Studio on session-open/reload (P0-1).
+ *  404 (no deck job for this session) resolves to `null`, NOT a throw — this is
+ *  an expected, common case (most sessions never build a deck), unlike the
+ *  EndpointPendingError convention used for genuinely-missing routes. Any other
+ *  failure (network, 5xx, auth) still throws so a rehydrate call-site can tell
+ *  "no deck" apart from "couldn't check right now". */
+export async function getDeckJobBySession(sessionId: string): Promise<DeckJobBySession | null> {
+  const url = requireUrl();
+  const res = await fetchWithTimeout(
+    `${url}/generate-deck/by-session/${encodeURIComponent(sessionId)}`,
+    { headers: await authHeaders() }, T_FAST, 'Checking for a saved deck',
+  );
+  if (res.status === 404) return null;
+  return json<DeckJobBySession>(res);
+}
+
 /** Studio session payload (§4) for a built deck: build-format options + the
  *  category-grounding provenance. Throws EndpointPending on 404/501 so the surface
  *  can degrade gracefully while the backend endpoint is still landing. */

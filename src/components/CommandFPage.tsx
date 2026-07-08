@@ -12,6 +12,7 @@ import {
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChatStream, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentAuth, NotSignedInError,
   uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt, StreamAbortedError,
+  getDeckJobBySession, generateDeckStatus, type DeckJobBySession,
 } from './commandf/api';
 import { useDictation } from '../hooks/useDictation';
 import MicButton from './commandf/MicButton';
@@ -19,6 +20,7 @@ import {
   readSessionsCache, writeSessionsCache,
   readBriefingCache, writeBriefingCache,
   readDraft, writeDraft, readActiveSession, writeActiveSession,
+  readDeckPointer, writeDeckPointer, clearDeckPointer,
 } from './commandf/sessionsCache';
 import { timeAgo } from './commandf/util';
 import Composer from './commandf/Composer';
@@ -116,6 +118,20 @@ export function CommandFPage({
     // §3.6: set when the studio is opened against an in-flight build (no
     // completed JobStatus yet) rather than a finished deck's "Edit in studio →".
     buildStatus?: 'building';
+    planTotalSlides?: number;
+  } | null>(null);
+  // P0-1: the deck job (if any) tied to the CURRENTLY open session, rehydrated
+  // on session-open/reload so Deck Studio stays reachable after navigating away
+  // (Actionist/COMMANDF_DEMO_RUN_PROBLEMS_2026-07-07.md). Distinct from
+  // `deckStudioSeed`, which only exists once the user has actually opened the
+  // studio in this tab — `resumeDeck` drives a "Resume deck" affordance in chat
+  // BEFORE that happens. `status: 'error'` jobs are filtered out at the
+  // rehydrate call site (nothing useful to resume into).
+  const [resumeDeck, setResumeDeck] = useState<{
+    jobId: string;
+    status: DeckJobBySession['status'];
+    title?: string;
+    approvedPlan: Record<string, unknown> | null;
     planTotalSlides?: number;
   } | null>(null);
   const [steps, setSteps] = useState<ThinkingStep[]>([]);  // live agent progress
@@ -276,6 +292,7 @@ export function CommandFPage({
         setSessionId(lastSid);
         setSurface('chat');
         setHistoryError(false);
+        rehydrateDeck(lastSid); // P0-1: hard-reload recovery path
         fetchHistory(lastSid)
           .then((h) => { if (activeSessionRef.current === lastSid) setMessages(tagMsgs(h)); })
           // On failure keep the thread open with a retry rather than silently
@@ -366,9 +383,41 @@ export function CommandFPage({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // P0-1 rehydration: look up the deck job (if any) tied to this session so
+  // Deck Studio stays reachable after navigating away or a hard reload — the
+  // only key that unlocks it (`job_id`) previously lived nowhere but transient
+  // React state. Local-cache-first (instant "Resume deck"), then confirmed
+  // against the DB via `getDeckJobBySession` (source of truth; also self-heals
+  // a stale/deleted local pointer). Never throws — a failed confirm just means
+  // no chip shows this time; the DB link is still there for the next open.
+  const rehydrateDeck = useCallback((sid: string) => {
+    setResumeDeck(null); // never show a stale chip from the previously-open session
+    const cached = readDeckPointer(sid);
+    if (cached) {
+      setResumeDeck({ jobId: cached.job_id, status: 'running', approvedPlan: null });
+    }
+    getDeckJobBySession(sid)
+      .then((job) => {
+        if (activeSessionRef.current !== sid) return; // stale — user moved on
+        if (!job) {
+          setResumeDeck(null);
+          clearDeckPointer(sid); // the cached pointer no longer resolves to a real job
+          return;
+        }
+        if (job.status === 'error') { setResumeDeck(null); return; } // nothing to resume into
+        writeDeckPointer(sid, { job_id: job.job_id, deck_rev: cached?.deck_rev ?? 1 }); // keep cache in sync
+        setResumeDeck({
+          jobId: job.job_id, status: job.status, title: job.title,
+          approvedPlan: job.plan ?? null, planTotalSlides: job.plan_total_slides,
+        });
+      })
+      .catch(() => { /* leave the optimistic cache-only chip (if any); DB confirm can retry next open */ });
+  }, []);
+
   const openSession = async (sid: string) => {
     activeSessionRef.current = sid;
     setSessionId(sid); setSurface('chat'); setHistoryError(false);
+    rehydrateDeck(sid);
     try {
       const msgs = await fetchHistory(sid);
       // Staleness guard: discard results if the user switched to a different
@@ -392,7 +441,7 @@ export function CommandFPage({
     catch { setHistoryError(true); }
   }, [sessionId]);
 
-  const newChat = () => { activeSessionRef.current = null; setSessionId(null); setMessages([]); setSurface('home'); setHistoryError(false); setFocusKey((k) => k + 1); };
+  const newChat = () => { activeSessionRef.current = null; setSessionId(null); setMessages([]); setSurface('home'); setHistoryError(false); setResumeDeck(null); setFocusKey((k) => k + 1); };
 
   const cancelStream = () => {
     streamCtrlRef.current?.abort();
@@ -535,6 +584,31 @@ export function CommandFPage({
     setDeckStudioSeed(args);
     setSurface('deckstudio');
   }, []);
+
+  // P0-1 "Resume deck" chip action. Two recovery depths, matching what Deck
+  // Studio itself already knows how to do:
+  //  - status 'complete': fetch the full JobStatus (deck_rev + preview_urls —
+  //    fields the lean by-session payload deliberately omits) via the same
+  //    generateDeckStatus call the normal "Edit in studio →" hand-off uses, so
+  //    the studio mounts with real thumbnails immediately, no different from a
+  //    fresh build.
+  //  - status 'running'/'queued': reuse the EXISTING §3.6 build-tail recovery
+  //    (buildStatus:'building') — the same path a live build already resumes
+  //    through on remount, so an in-progress job needs no new machinery here.
+  const resumeDeckToStudio = useCallback(async () => {
+    if (!resumeDeck) return;
+    const { jobId, status, approvedPlan, planTotalSlides } = resumeDeck;
+    if (status === 'complete') {
+      try {
+        const full = await generateDeckStatus(jobId);
+        openDeckStudio({ jobId, seed: full, approvedPlan: approvedPlan ?? ((full.plan as Record<string, unknown>) ?? null) });
+      } catch {
+        toast.error('Could not reopen that deck.');
+      }
+      return;
+    }
+    openDeckStudio({ jobId, seed: null, approvedPlan, buildStatus: 'building', planTotalSlides });
+  }, [resumeDeck, openDeckStudio, toast]);
 
   // W6.3 — deterministic follow-up chip. Shown only once the LATEST assistant
   // turn has actually finished (not streaming) and carries real sources; hides
@@ -742,6 +816,29 @@ export function CommandFPage({
                   className={`shrink-0 inline-flex items-center h-7 px-2.5 rounded-pill border border-border-light text-caption text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
                 >
                   Retry
+                </button>
+              </div>
+            )}
+            {/* P0-1: this session built a deck earlier — it's persisted server-side
+                but was otherwise unreachable once the studio surface unmounted
+                (navigate away, reload). Least-invasive fix: a resume affordance
+                rather than force-jumping the surface on every session open. */}
+            {resumeDeck && (
+              <div className="mx-6 mt-4 shrink-0 flex items-center justify-between gap-3 rounded-surface border border-border-light bg-bg-secondary px-4 py-2.5 text-caption text-text-secondary animate-fade-in">
+                <span className="inline-flex items-center gap-2 min-w-0">
+                  <Presentation className="w-3.5 h-3.5 shrink-0 text-text-muted" strokeWidth={1.75} aria-hidden />
+                  <span className="truncate">
+                    {resumeDeck.status === 'complete'
+                      ? (resumeDeck.title ? `Deck ready: ${resumeDeck.title}` : 'A deck from this conversation is ready.')
+                      : 'A deck from this conversation is still building.'}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={resumeDeckToStudio}
+                  className={`shrink-0 inline-flex items-center h-7 px-2.5 rounded-pill border border-border-light text-caption text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
+                >
+                  Resume deck
                 </button>
               </div>
             )}

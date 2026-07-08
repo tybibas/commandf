@@ -8,6 +8,7 @@ import {
 } from './api';
 import { SurfaceHeader } from './generationUI';
 import { preloadPreviewImage } from './previewPool';
+import { writeDeckPointer } from './sessionsCache';
 import DeckChat from './DeckChat';
 import DeckCanvas from './DeckCanvas';
 import DeckChangelog, { type ChangelogBatch } from './DeckChangelog';
@@ -37,7 +38,7 @@ const reducedMotion = () =>
  * the same reconcile path a forward edit uses.
  */
 export default function DeckStudio({
-  onBack, jobId, approvedPlan: _approvedPlan, seed, clientSlug: _clientSlug, sessionId: _sessionId,
+  onBack, jobId, approvedPlan: _approvedPlan, seed, clientSlug: _clientSlug, sessionId,
   buildStatus = 'ready', planTotalSlides,
 }: {
   onBack: () => void;
@@ -60,6 +61,18 @@ export default function DeckStudio({
   const [deckRev, setDeckRev] = useState(seed?.deck_rev ?? (buildStatus === 'building' ? 0 : 1));
   const [previewUrls, setPreviewUrls] = useState<string[]>(seed?.preview_urls ?? []);
   const [selectedSlide, setSelectedSlide] = useState(0);
+
+  // P0-1 belt-and-braces: keep the per-session local pointer in step with
+  // whatever revision of this job is on screen — every path that bumps
+  // `deckRev` (a live build finishing, a forward edit's batch_done, an undo)
+  // flows through this one effect instead of each call site writing it
+  // separately. `sessionId` is undefined for a studio opened without a chat
+  // session (e.g. "Build a deck" from Landing before any session exists);
+  // `writeDeckPointer` no-ops on a falsy id, matching the write-path guard
+  // in DeckSurface.
+  useEffect(() => {
+    if (jobId) writeDeckPointer(sessionId ?? null, { job_id: jobId, deck_rev: deckRev });
+  }, [jobId, deckRev, sessionId]);
 
   // ── §3.6 build-mode state — live while `buildStatus==='building'`, then the
   // component permanently flips to the existing interactive studio below. ──

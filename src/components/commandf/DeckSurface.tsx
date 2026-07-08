@@ -9,6 +9,7 @@ import {
   generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide, startDeckBuild,
   DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError, type DeckOutline as Outline,
 } from './api';
+import { writeDeckPointer } from './sessionsCache';
 import { useJob } from './useJob';
 import ComposerTools from './ComposerTools';
 import { RunningPanel, ErrorPanel, ResultPanel, type SlideEdit } from './generationUI';
@@ -154,6 +155,15 @@ export default function DeckSurface({
   const job = useJob(generateDeckStatus);
   const jobActive = job.phase !== 'idle';
 
+  // P0-1 belt-and-braces (legacy one-shot path): mirror the job's id/rev into the
+  // per-session local pointer as soon as each becomes known, so a reload/navigate
+  // -away-and-back can show "Resume deck" instantly before the by-session network
+  // confirm resolves. The live-build handoff (buildFromPlan → startDeckBuild) never
+  // touches this `job` hook, so it writes its own pointer at hand-off time below.
+  useEffect(() => {
+    if (job.jobId) writeDeckPointer(sessionId ?? null, { job_id: job.jobId, deck_rev: (job.result?.deck_rev as number | undefined) ?? 1 });
+  }, [job.jobId, job.result?.deck_rev, sessionId]);
+
   const activeType = TYPES.find((t) => t.id === type) ?? TYPES[0];
   const enumType = DECK_ENUM_TYPES.has(type) ? type : undefined;
   const fullCount = length === 'custom'
@@ -237,6 +247,7 @@ export default function DeckSurface({
       session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
     }).then(({ job_id }) => {
       const planSlides = (approvedPlan as { slides?: unknown[] }).slides;
+      writeDeckPointer(sessionId ?? null, { job_id, deck_rev: 0 }); // overwrites any prior job for this session
       onOpenStudio({
         jobId: job_id, seed: null, approvedPlan, buildStatus: 'building',
         planTotalSlides: Array.isArray(planSlides) ? planSlides.length : undefined,

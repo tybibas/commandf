@@ -103,3 +103,45 @@ export function writeActiveSession(uid: string | null, sid: string | null): void
     /* non-fatal */
   }
 }
+
+// ── Per-session deck-job pointer (P0-1 belt-and-braces) ──────────────────────
+// The durable link is the backend `commandf_jobs.session_id` column, looked up
+// via `getDeckJobBySession`. This local pointer is purely an optimization: it
+// lets the UI show a "Resume deck" affordance the instant a session opens,
+// before that network round trip resolves — and degrades harmlessly (the
+// by-session confirm call is still the source of truth) if it's stale, absent,
+// or storage is disabled. Keyed by sessionId (not uid) per the fix direction in
+// Actionist/COMMANDF_DEMO_RUN_PROBLEMS_2026-07-07.md — a session belongs to one
+// signed-in operator already, so no extra uid scoping is needed here.
+export type DeckPointer = { job_id: string; deck_rev: number };
+const deckKey = (sessionId: string) => `cf-deck-${sessionId}`;
+
+export function readDeckPointer(sessionId: string | null): DeckPointer | null {
+  if (!sessionId) return null;
+  try {
+    const raw = localStorage.getItem(deckKey(sessionId));
+    return raw ? (JSON.parse(raw) as DeckPointer) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Overwrites any prior pointer for this session — a new build for the same
+ *  session must replace the old job_id, never accumulate alongside it. */
+export function writeDeckPointer(sessionId: string | null, pointer: DeckPointer): void {
+  if (!sessionId) return;
+  try {
+    localStorage.setItem(deckKey(sessionId), JSON.stringify(pointer));
+  } catch {
+    /* quota / disabled storage — non-fatal, the DB by-session lookup still works */
+  }
+}
+
+export function clearDeckPointer(sessionId: string | null): void {
+  if (!sessionId) return;
+  try {
+    localStorage.removeItem(deckKey(sessionId));
+  } catch {
+    /* non-fatal */
+  }
+}
