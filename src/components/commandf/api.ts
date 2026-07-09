@@ -616,6 +616,10 @@ export async function generateDeckOutline(input: {
   // backend injects this into the emit_plan prompt so length is a REAL planner
   // constraint. Omit for Auto (planner sizes the deck to the evidence).
   target_slides?: number;
+  // Proposal cover data (harmless on the outline call; the build call is the
+  // one the backend actually reads these from — see generateDeck below).
+  prospect_company?: string;
+  prospect_website?: string;
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
@@ -647,6 +651,11 @@ export async function generateDeck(input: {
   deck_scope?: 'full' | 'section';
   section_start?: number;
   section_size?: number;
+  // Proposal cover data: drives the "Prepared for {company}" cover line and the
+  // scraped-logo lookup (falls back to company name; degrades to no logo on
+  // fetch failure). Optional — the build proceeds fine without them.
+  prospect_company?: string;
+  prospect_website?: string;
 }): Promise<{ job_id: string }> {
   return postJob('/generate-deck', JSON.stringify(input), false);
 }
@@ -887,6 +896,7 @@ export async function streamDeckOutline(
   input: {
     request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
     file_ids?: string[]; target_slides?: number;
+    prospect_company?: string; prospect_website?: string;
   },
   handlers: { onPhase?: (label: string) => void },
   signal?: AbortSignal,
@@ -985,6 +995,7 @@ export type BuildDoneResult = { deck_rev: number; built_through: number; plan_to
 export async function startDeckBuild(approvedPlan: Record<string, unknown>, opts?: {
   request?: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
   file_ids?: string[]; target_slides?: number;
+  prospect_company?: string; prospect_website?: string;
 }): Promise<{ job_id: string }> {
   return postJob('/generate-deck/build', JSON.stringify({ approved_plan: approvedPlan, ...opts }), false);
 }

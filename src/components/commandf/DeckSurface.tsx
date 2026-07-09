@@ -117,6 +117,11 @@ export default function DeckSurface({
 }) {
   const [type, setType] = useState('');
   const [brief, setBrief] = useState(initialBrief ?? '');
+  // Proposal-only cover data: the backend uses these to render "Prepared for
+  // {company}" on the cover slide and to scrape the prospect's site for a logo.
+  // Both optional — omitted entirely (not sent as empty strings) when blank.
+  const [prospectCompany, setProspectCompany] = useState('');
+  const [prospectWebsite, setProspectWebsite] = useState('');
   const [length, setLength] = useState('');
   const [lenCustom, setLenCustom] = useState('');
   // Build mode: 'full' authors the whole deck; 'sections' authors it in chunks of
@@ -203,6 +208,21 @@ export default function DeckSurface({
   // sentinel (or 'full' mode) authors the whole deck.
   const chunkSize = deckMode === 'sections' && sectionSize > 0 ? sectionSize : 0;
 
+  // Optional cover fields, shown only for the proposal deliverable. Trimmed and
+  // omitted (undefined, never "") when blank so the backend sees them as absent.
+  const showProspectFields = type === 'proposal';
+  const prospectFields = () => {
+    const company = prospectCompany.trim();
+    const site = prospectWebsite.trim();
+    if (!showProspectFields || (!company && !site)) return {};
+    return {
+      prospect_company: company || undefined,
+      // Accept with or without a scheme; prepend https:// so the backend gets
+      // a fetchable URL without hard-blocking submission on validation.
+      prospect_website: site ? (/^https?:\/\//i.test(site) ? site : `https://${site}`) : undefined,
+    };
+  };
+
   const draftOutline = async () => {
     if (!canGo || outlinePhase === 'loading') return;
     setOutlinePhase('loading'); setOutlineError(''); setOutlineProgress('');
@@ -211,6 +231,7 @@ export default function DeckSurface({
         {
           request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
           session_id: sessionId, file_ids: fileIds, target_slides: fullCount,
+          ...prospectFields(),
         },
         { onPhase: (label) => setOutlineProgress(label) },
       );
@@ -238,6 +259,7 @@ export default function DeckSurface({
         session_id: sessionId, approved_plan: approvedPlan, target_slides: fullCount,
         deck_scope: deckMode === 'sections' ? 'section' : 'full',
         section_start: 0, section_size: chunkSize, file_ids: fileIds,
+        ...prospectFields(),
       }));
       return;
     }
@@ -245,6 +267,7 @@ export default function DeckSurface({
     startDeckBuild(approvedPlan, {
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
       session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
+      ...prospectFields(),
     }).then(({ job_id }) => {
       const planSlides = (approvedPlan as { slides?: unknown[] }).slides;
       writeDeckPointer(sessionId ?? null, { job_id, deck_rev: 0 }); // overwrites any prior job for this session
@@ -269,6 +292,7 @@ export default function DeckSurface({
     job.run(() => generateDeck({
       request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
       session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
+      ...prospectFields(),
     }));
   };
 
@@ -431,6 +455,33 @@ export default function DeckSurface({
             {fullCount ? ` of ~${fullCount}` : ''}. The full deck is planned; you build and
             review one section at a time, then continue to the next.
           </p>
+        )}
+
+        {/* Prospect (optional) — proposal-only cover data: name + logo on the
+            cover slide. Sent as prospect_company / prospect_website. */}
+        {showProspectFields && (
+          <div className="mt-5">
+            <p className="text-caption text-text-muted font-medium mb-1.5">Prospect (optional)</p>
+            <p className="text-caption text-text-muted mb-2 leading-relaxed">
+              Adds the prospect&#39;s name and logo to the cover.
+            </p>
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="flex-1">
+                <label htmlFor="prospect-company" className="sr-only">Prospect company</label>
+                <input id="prospect-company" type="text" value={prospectCompany}
+                  onChange={(e) => setProspectCompany(e.target.value)}
+                  placeholder="e.g. Meridian Mutual Insurance"
+                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+              </div>
+              <div className="flex-1">
+                <label htmlFor="prospect-website" className="sr-only">Website URL</label>
+                <input id="prospect-website" type="text" value={prospectWebsite}
+                  onChange={(e) => setProspectWebsite(e.target.value)}
+                  placeholder="e.g. https://meridianmutual.com"
+                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Brief */}
