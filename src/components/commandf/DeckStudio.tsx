@@ -96,9 +96,13 @@ export default function DeckStudio({
     if (!jobId || !builtThrough) return; // nothing built yet to reconstruct
     let live = true;
     (async () => {
+      // Stagger each slide's first attempt by 120ms/index so all N slides
+      // don't hit /preview in the same tick right after a build/resume — see
+      // previewPool.ts for why a single unstaggered attempt 404s against the
+      // backend's serial render.
       const urls = await Promise.all(
         Array.from({ length: builtThrough }, (_, i) =>
-          deckSlidePreviewUrl(jobId, i, deckRevRef.current).then(preloadPreviewImage)),
+          deckSlidePreviewUrl(jobId, i, deckRevRef.current).then((u) => preloadPreviewImage(u, i * 120))),
       );
       if (!live) return;
       setPreviewUrls(urls);
@@ -243,7 +247,7 @@ export default function DeckStudio({
           ? status.preview_urls
           : await Promise.all(
               Array.from({ length: builtThrough }, (_, i) =>
-                deckSlidePreviewUrl(jobId, i, rev).then(preloadPreviewImage)),
+                deckSlidePreviewUrl(jobId, i, rev).then((u) => preloadPreviewImage(u, i * 120))),
             );
         setDeckRev(rev);
         setPreviewUrls(urls);
@@ -285,7 +289,7 @@ export default function DeckStudio({
             // iterate 0..built_through-1 for exactly built_through entries in page order.
             const urls = await Promise.all(
               Array.from({ length: terminal.built_through }, (_, i) =>
-                deckSlidePreviewUrl(jobId, i, terminal.deck_rev).then(preloadPreviewImage)),
+                deckSlidePreviewUrl(jobId, i, terminal.deck_rev).then((u) => preloadPreviewImage(u, i * 120))),
             );
             setPreviewUrls(urls);
             setBuilding(false);
