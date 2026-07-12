@@ -12,7 +12,7 @@ import {
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChatStream, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentAuth, NotSignedInError,
   uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt, StreamAbortedError,
-  getDeckJobBySession, generateDeckStatus, type DeckJobBySession,
+  getDeckJobBySession, generateDeckStatus, type DeckJobBySession, type DeckBuild,
 } from './commandf/api';
 import { useDictation } from '../hooks/useDictation';
 import MicButton from './commandf/MicButton';
@@ -30,6 +30,7 @@ import Landing, { type QuickAction, type ExampleCard } from './commandf/Landing'
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
 import DeckStudio from './commandf/DeckStudio';
+import DeckLibrary from './commandf/DeckLibrary';
 import SpendPanel from './commandf/SpendPanel';
 import SurveySurface from './commandf/SurveySurface';
 import KnowledgePanel from './commandf/KnowledgePanel';
@@ -60,7 +61,7 @@ const PROMPT_ICP = 'What ICP and proof points did we lead with for a new client 
 // comparison after an answer with sources lands.
 const PROMPT_COMPARE_SOURCES = 'Compare the engagements cited above side by side: what patterns repeat?';
 
-type Surface = 'home' | 'chat' | 'deck' | 'survey' | 'deckstudio' | 'spend';
+type Surface = 'home' | 'chat' | 'deck' | 'survey' | 'deckstudio' | 'spend' | 'decks';
 
 function greetingForNow(): string {
   // Anchor to Pacific time regardless of the viewer's local zone, so the
@@ -595,10 +596,16 @@ export function CommandFPage({
   //  - status 'running'/'queued': reuse the EXISTING §3.6 build-tail recovery
   //    (buildStatus:'building') — the same path a live build already resumes
   //    through on remount, so an in-progress job needs no new machinery here.
-  const resumeDeckToStudio = useCallback(async () => {
-    if (!resumeDeck) return;
-    const { jobId, status, approvedPlan, planTotalSlides } = resumeDeck;
-    if (status === 'complete') {
+  // Shared resolver behind both the "Resume deck" chip and the deck LIBRARY's
+  // "Open in studio" action: a `complete` job fetches the full JobStatus (deck_rev
+  // + preview_urls) via the same call the normal "Edit in studio →" hand-off uses,
+  // so the studio mounts with real thumbnails immediately; a still-`running`/
+  // `queued` job reuses the EXISTING §3.6 build-tail recovery (buildStatus:
+  // 'building') instead of new machinery.
+  const openJobInStudio = useCallback(async (
+    jobId: string, status: import('./commandf/api').JobStatus['status'], approvedPlan: Record<string, unknown> | null, planTotalSlides?: number,
+  ) => {
+    if (status === 'complete' || status === 'done') {
       try {
         const full = await generateDeckStatus(jobId);
         openDeckStudio({ jobId, seed: full, approvedPlan: approvedPlan ?? ((full.plan as Record<string, unknown>) ?? null) });
@@ -608,7 +615,33 @@ export function CommandFPage({
       return;
     }
     openDeckStudio({ jobId, seed: null, approvedPlan, buildStatus: 'building', planTotalSlides });
-  }, [resumeDeck, openDeckStudio, toast]);
+  }, [openDeckStudio, toast]);
+
+  const resumeDeckToStudio = useCallback(async () => {
+    if (!resumeDeck) return;
+    await openJobInStudio(resumeDeck.jobId, resumeDeck.status, resumeDeck.approvedPlan, resumeDeck.planTotalSlides);
+  }, [resumeDeck, openJobInStudio]);
+
+  // Deck LIBRARY → Deck Studio handoff. Drives the SAME rehydration path as
+  // "Resume deck" (openJobInStudio above) — the deliberate reuse the mission
+  // asked for, rather than a parallel open-studio mechanism. When the build
+  // carries a `session_id`, also opens that chat session first so the copilot
+  // is scoped to this deck's conversation (same as clicking it in the rail);
+  // an old build with no session_id (or one the backend can't restore) still
+  // opens the studio cleanly — the deck loads, chat just starts fresh.
+  const openBuildInStudio = useCallback(async (build: DeckBuild) => {
+    if (build.session_id) {
+      await openSession(build.session_id);
+    } else {
+      activeSessionRef.current = null;
+      setSessionId(null);
+      setResumeDeck(null);
+    }
+    await openJobInStudio(build.job_id, build.status, null, build.slide_count);
+    // `openSession` is a plain (non-memoized) async fn defined below in this
+    // component, matching the existing pattern other callbacks here follow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openJobInStudio]);
 
   // W6.3 — deterministic follow-up chip. Shown only once the LATEST assistant
   // turn has actually finished (not streaming) and carries real sources; hides
@@ -641,6 +674,7 @@ export function CommandFPage({
     { id: 'knowledge', label: 'Open knowledge base', group: 'Actions', icon: Database, hint: docs ? docs.toLocaleString() : undefined, keywords: 'documents sources upload drive', run: () => setShowKnowledge(true) },
     { id: 'deck', label: 'Build a deck', group: 'Actions', icon: Presentation, hint: 'PPTX', keywords: 'presentation slides pptx', run: () => setSurface('deck') },
     { id: 'spend', label: 'View spend', group: 'Actions', icon: Coins, keywords: 'cost usage anthropic budget ledger spend', run: () => setSurface('spend') },
+    { id: 'decks', label: 'Open deck library', group: 'Actions', icon: Layers, keywords: 'decks past builds history library resume', run: () => setSurface('decks') },
     { id: 'survey', label: 'Survey compendium', group: 'Actions', icon: Table2, hint: 'XLSX', keywords: 'spreadsheet xlsx', run: () => setSurface('survey') },
     ...(deckStudioSeed
       ? [{ id: 'deckstudio', label: 'Edit in deck studio', group: 'Actions', icon: Layers, keywords: 'edit ops chat canvas', run: () => setSurface('deckstudio') } as PaletteCommand]
@@ -681,6 +715,7 @@ export function CommandFPage({
     { label: 'Upload a file', icon: Upload, onClick: () => { setShowKnowledge(true); setShowPlus(false); } },
     { label: 'Build a deck', icon: Presentation, onClick: () => { setSurface('deck'); setShowPlus(false); } },
     { label: 'Survey compendium', icon: Table2, onClick: () => { setSurface('survey'); setShowPlus(false); } },
+    { label: 'Deck library', icon: Layers, onClick: () => { setSurface('decks'); setShowPlus(false); } },
   ];
 
   // Injected into the composer's control row (left): the "+" creation menu and a
@@ -765,6 +800,7 @@ export function CommandFPage({
         onDeleteSession={onDeleteSession}
         onOpenKnowledge={() => setShowKnowledge(true)}
         onOpenSpend={() => setSurface('spend')}
+        onOpenDecks={() => setSurface('decks')}
         docCount={docs}
         contextLabel={contextLabel}
         logoSrc={logoSrc}
@@ -803,6 +839,8 @@ export function CommandFPage({
           />
         ) : surface === 'spend' ? (
           <SpendPanel onBack={() => setSurface('home')} />
+        ) : surface === 'decks' ? (
+          <DeckLibrary onBack={() => setSurface('home')} onOpenInStudio={openBuildInStudio} />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (
