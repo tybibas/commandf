@@ -1179,23 +1179,22 @@ export function deckDownloadUrl(jobId: string): string {
   return `${url}/generate-deck/${encodeURIComponent(jobId)}/download`;
 }
 
-/** Click-time `.pptx` download for Deck Studio. Precomputing an `<a href>` at
- *  render time bakes a token that can go stale long before the user clicks
- *  (the original bug: laptop sleep / long-lived tab → cached token expired →
- *  401 "Authentication failed"). This instead fetches fresh, on click, with a
- *  real Authorization header (routed through `authHeaders` → `freshSession`,
- *  so it's proactively refreshed already); if the backend still 401s (token
- *  expired in the gap between freshness-check and request), it forces one
- *  `refreshSession()` and retries exactly once. The file is pulled as a blob
- *  and "clicked" via a throwaway object URL so the browser download dialog
- *  behaves exactly like a normal `<a download>`.
+/** Click-time file download, shared by every `.pptx` (and similar) download
+ *  control. Precomputing an `<a href>` at render time bakes a token that can
+ *  go stale long before the user clicks (the original bug: laptop sleep /
+ *  long-lived tab → cached token expired → 401 "Authentication failed").
+ *  This instead fetches fresh, on click, with a real Authorization header
+ *  (routed through `authHeaders` → `freshSession`, so it's proactively
+ *  refreshed already); if the backend still 401s (token expired in the gap
+ *  between freshness-check and request), it forces one `refreshSession()`
+ *  and retries exactly once. The file is pulled as a blob and "clicked" via
+ *  a throwaway object URL so the browser download dialog behaves exactly
+ *  like a normal `<a download>`.
  *
  *  Only falls back to the legacy `?token=` href (which can itself be stale)
  *  if the blob path fails for a reason that isn't a 401 we already retried —
  *  e.g. a network/CORS error — so a click is never a silent no-op. */
-export async function downloadDeckPptx(jobId: string, title?: string): Promise<void> {
-  const url = deckDownloadUrl(jobId);
-  const filename = `${(title || jobId).trim().replace(/[\\/:*?"<>|]+/g, '_') || jobId}.pptx`;
+export async function downloadFileFresh(url: string, filename: string): Promise<void> {
   try {
     let res = await fetch(url, { headers: await authHeaders() });
     if (res.status === 401) {
@@ -1218,6 +1217,15 @@ export async function downloadDeckPptx(jobId: string, title?: string): Promise<v
     const href = await authedDownloadUrl(url);
     window.location.assign(href);
   }
+}
+
+/** Click-time `.pptx` download for Deck Studio — thin wrapper over
+ *  `downloadFileFresh` that also builds the deck's download URL from a
+ *  bare `jobId` (Deck Studio only ever holds that, not a full URL). */
+export async function downloadDeckPptx(jobId: string, title?: string): Promise<void> {
+  const url = deckDownloadUrl(jobId);
+  const filename = `${(title || jobId).trim().replace(/[\\/:*?"<>|]+/g, '_') || jobId}.pptx`;
+  return downloadFileFresh(url, filename);
 }
 
 export async function generateSurveyCompendium(file: File, title?: string): Promise<{ job_id: string }> {

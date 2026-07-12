@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import { ArrowLeft, Download, Loader2, AlertCircle, FileWarning, RotateCcw, Check, Layers, Wand2, X, ChevronDown } from 'lucide-react';
-import { authedDownloadUrl, type JobStatus } from './api';
+import { downloadFileFresh, type JobStatus } from './api';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
@@ -281,15 +281,18 @@ export function ResultPanel({
     typeof result.slide_count === 'number' ? `${result.slide_count} slides` : null;
   const heading = result.title || countLabel || `Generated ${kindLabel.toLowerCase()}`;
 
-  // The .pptx endpoints authenticate via `?token=` (an <a download> can't send a
-  // Bearer header). Resolve the signed href once the result arrives.
-  const [downloadHref, setDownloadHref] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    if (!result.download_url) { setDownloadHref(null); return; }
-    authedDownloadUrl(result.download_url).then((href) => { if (alive) setDownloadHref(href); });
-    return () => { alive = false; };
-  }, [result.download_url]);
+  // Fetched fresh on click (not a token baked into a precomputed href) — a
+  // one-shot result can sit on screen long enough for a cached token to
+  // expire (laptop sleep / long-lived tab), which turned a stale `<a href>`
+  // into a silent 401. See `downloadFileFresh` in api.ts for the same fix
+  // Deck Studio's download button already ships.
+  const [downloading, setDownloading] = useState(false);
+  const filename = `${(result.title || `${kindLabel}`).trim().replace(/[\\/:*?"<>|]+/g, '_')}.pptx`;
+  const handleDownload = () => {
+    if (!result.download_url || downloading) return;
+    setDownloading(true);
+    downloadFileFresh(result.download_url, filename).finally(() => setDownloading(false));
+  };
 
   return (
     <div className="mt-5 rounded-surface border border-border-light bg-bg-elevated overflow-hidden animate-slide-up shadow-float">
@@ -350,14 +353,15 @@ export function ResultPanel({
       {/* Primary action — Download is the clear, dominant next step. */}
       {result.download_url && (
         <div className="px-5 py-4 border-t border-hairline">
-          <a
-            href={downloadHref ?? undefined}
-            download
-            aria-disabled={!downloadHref}
-            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-pill text-body font-medium ${PILL_BTN} ${downloadHref ? '' : 'opacity-60 pointer-events-none'}`}
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={downloading}
+            className={`inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-pill text-body font-medium ${PILL_BTN} ${downloading ? 'opacity-60 pointer-events-none' : ''}`}
           >
-            <Download className="w-4 h-4" /> Download .pptx
-          </a>
+            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            {downloading ? 'Preparing…' : 'Download .pptx'}
+          </button>
         </div>
       )}
 
