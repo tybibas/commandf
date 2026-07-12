@@ -318,41 +318,71 @@ export type LoadResult<T> = { ok: true; data: T } | { ok: false; error: Error };
 
 // ── Internals ────────────────────────────────────────────────────────────────
 
-async function authHeaders(): Promise<Record<string, string>> {
+// A cached access_token is only as good as its expiry. A long-lived tab or a
+// laptop sleep can leave `getSession()` returning a token that's already dead
+// by the time it reaches the backend (401 "Authentication failed" even though
+// the user never signed out). `freshSession()` is the ONE place every token
+// consumer below goes through: it checks `expires_at` and proactively calls
+// `refreshSession()` when the token is missing/expired/within a minute of
+// expiring, single-flighted so a burst of concurrent callers (auth headers +
+// slide previews + a download) share one refresh instead of firing N.
+const TOKEN_REFRESH_SKEW_S = 60;
+let refreshInFlight: Promise<Awaited<ReturnType<typeof supabase.auth.getSession>>['data']['session']> | null = null;
+
+async function freshSession() {
   const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const session = data.session;
+  if (!session) return session;
+  const expiresAt = session.expires_at;
+  const freshEnough = typeof expiresAt === 'number' && expiresAt - Date.now() / 1000 > TOKEN_REFRESH_SKEW_S;
+  if (freshEnough) return session;
+  if (!refreshInFlight) {
+    refreshInFlight = supabase.auth.refreshSession()
+      .then(({ data, error }) => (error ? null : data.session))
+      .catch(() => null)
+      .finally(() => { refreshInFlight = null; });
+  }
+  // Refresh failure never makes things worse than before this fix: fall back
+  // to the (possibly stale) session getSession() already returned.
+  return (await refreshInFlight) ?? session;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const session = await freshSession();
+  const token = session?.access_token;
   if (!token) throw new NotSignedInError();
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
 }
 
 async function bearer(): Promise<string> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
+  const session = await freshSession();
+  const token = session?.access_token;
   if (!token) throw new NotSignedInError();
   return token;
 }
 
-/** Returns the current access token, or null if not signed in (never throws). */
+/** Returns the current access token, or null if not signed in (never throws).
+ * Expiry-aware: refreshes through `freshSession()` before returning. */
 export async function currentToken(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+  const session = await freshSession();
+  return session?.access_token ?? null;
 }
 
 /** Stable per-user id (JWT sub) for keying the local sessions cache; null if
  * not signed in. Never throws. */
 export async function currentUserId(): Promise<string | null> {
-  const { data } = await supabase.auth.getSession();
-  return data.session?.user?.id ?? null;
+  const session = await freshSession();
+  return session?.user?.id ?? null;
 }
 
-/** Token + stable uid in ONE getSession() read (local, no network). Avoids the
- * two back-to-back getSession() calls the sidecar loader used to make. Never
- * throws; both fields are null when not signed in. */
+/** Token + stable uid in ONE freshSession() read. Avoids the two back-to-back
+ * getSession() calls the sidecar loader used to make. Never throws; both
+ * fields are null when not signed in. */
 export async function currentAuth(): Promise<{ token: string | null; uid: string | null }> {
-  const { data } = await supabase.auth.getSession();
+  const session = await freshSession();
   return {
-    token: data.session?.access_token ?? null,
-    uid: data.session?.user?.id ?? null,
+    token: session?.access_token ?? null,
+    uid: session?.user?.id ?? null,
   };
 }
 
@@ -1147,6 +1177,47 @@ export async function authedDownloadUrl(downloadUrl: string): Promise<string> {
 export function deckDownloadUrl(jobId: string): string {
   const url = requireUrl();
   return `${url}/generate-deck/${encodeURIComponent(jobId)}/download`;
+}
+
+/** Click-time `.pptx` download for Deck Studio. Precomputing an `<a href>` at
+ *  render time bakes a token that can go stale long before the user clicks
+ *  (the original bug: laptop sleep / long-lived tab → cached token expired →
+ *  401 "Authentication failed"). This instead fetches fresh, on click, with a
+ *  real Authorization header (routed through `authHeaders` → `freshSession`,
+ *  so it's proactively refreshed already); if the backend still 401s (token
+ *  expired in the gap between freshness-check and request), it forces one
+ *  `refreshSession()` and retries exactly once. The file is pulled as a blob
+ *  and "clicked" via a throwaway object URL so the browser download dialog
+ *  behaves exactly like a normal `<a download>`.
+ *
+ *  Only falls back to the legacy `?token=` href (which can itself be stale)
+ *  if the blob path fails for a reason that isn't a 401 we already retried —
+ *  e.g. a network/CORS error — so a click is never a silent no-op. */
+export async function downloadDeckPptx(jobId: string, title?: string): Promise<void> {
+  const url = deckDownloadUrl(jobId);
+  const filename = `${(title || jobId).trim().replace(/[\\/:*?"<>|]+/g, '_') || jobId}.pptx`;
+  try {
+    let res = await fetch(url, { headers: await authHeaders() });
+    if (res.status === 401) {
+      await supabase.auth.refreshSession();
+      res = await fetch(url, { headers: await authHeaders() });
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  } catch {
+    // Blob path failed unexpectedly (network/CORS, or signed-out) — fall back
+    // to the old token-in-query href rather than leaving the click dead.
+    const href = await authedDownloadUrl(url);
+    window.location.assign(href);
+  }
 }
 
 export async function generateSurveyCompendium(file: File, title?: string): Promise<{ job_id: string }> {

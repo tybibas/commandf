@@ -4,7 +4,7 @@ import type { DeckOp, JobStatus, DeckChatHandlers, StudioSession, BuildStreamEve
 import {
   undoDeckStream, fetchStudioSession, streamDeckBuild, resolveBuildPreviewUrl,
   deckSlidePreviewUrl, StreamAbortedError, generateDeckStatus,
-  authedDownloadUrl, deckDownloadUrl,
+  downloadDeckPptx,
 } from './api';
 import { SurfaceHeader } from './generationUI';
 import { preloadPreviewImage } from './previewPool';
@@ -335,28 +335,35 @@ export default function DeckStudio({
   // ── P0-2: .pptx download control (Deck Studio has no export affordance
   // today — the only download button lives on the one-shot ResultPanel, which
   // Deck Studio never mounts). The backend 409s until the job is `complete`,
-  // so only resolve the signed href once the build has finished (`!building`);
-  // while building it's disabled rather than pointing at a URL that 409s.
-  const [downloadHref, setDownloadHref] = useState<string | null>(null);
-  useEffect(() => {
-    let alive = true;
-    if (!jobId || building) { setDownloadHref(null); return; }
-    authedDownloadUrl(deckDownloadUrl(jobId)).then((href) => { if (alive) setDownloadHref(href); });
-    return () => { alive = false; };
-  }, [jobId, building]);
+  // so downloading stays disabled while `building`.
+  //
+  // Click-time, not render-time: a precomputed `<a href>` bakes a token at the
+  // moment the build finishes (or the studio mounts) and can go stale long
+  // before the user actually clicks (long-lived tab / laptop sleep → expired
+  // token → 401 "Authentication failed" — the bug this replaces). Instead the
+  // click itself fetches fresh via `downloadDeckPptx`, which resolves a fresh
+  // token, retries once through a forced refresh on a 401, and falls back to
+  // the legacy `?token=` href only if the blob path fails unexpectedly.
+  const [downloading, setDownloading] = useState(false);
+  const downloadDisabled = !jobId || building || downloading;
+  const handleDownload = useCallback(() => {
+    if (!jobId || building || downloading) return;
+    setDownloading(true);
+    downloadDeckPptx(jobId, seed?.title).finally(() => setDownloading(false));
+  }, [jobId, building, downloading, seed?.title]);
 
   const downloadButton = jobId ? (
-    <a
-      href={downloadHref ?? undefined}
-      download
-      aria-disabled={!downloadHref}
+    <button
+      type="button"
+      onClick={handleDownload}
+      disabled={downloadDisabled}
       aria-label="Download .pptx"
-      title={building ? 'Finishing the build…' : 'Download .pptx'}
-      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-caption border border-border-light text-text-primary hover:bg-bg-tertiary active:scale-[0.98] transition-colors duration-fast ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0 ${downloadHref ? '' : 'opacity-40 pointer-events-none'}`}
+      title={building ? 'Finishing the build…' : downloading ? 'Preparing download…' : 'Download .pptx'}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-control text-caption border border-border-light text-text-primary hover:bg-bg-tertiary active:scale-[0.98] transition-colors duration-fast ease-out-expo focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0 ${downloadDisabled ? 'opacity-40 pointer-events-none' : ''}`}
     >
-      {building ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.75} />}
+      {(building || downloading) ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.75} />}
       Download
-    </a>
+    </button>
   ) : null;
   const [batches, setBatches] = useState<ChangelogBatch[]>([]);
   const [slideOrder, setSlideOrder] = useState<string[]>([]);
