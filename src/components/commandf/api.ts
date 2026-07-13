@@ -744,16 +744,18 @@ export type DeckBuild = {
 
 /** `GET /deck-builds?limit=&offset=` — newest-first list of past deck builds for
  *  the "Decks" library surface. Throws EndpointPendingError on 404/501 so the
- *  surface can show a quiet "coming soon" empty state instead of a crash. */
-export async function fetchDeckBuilds(limit = 20, offset = 0): Promise<DeckBuild[]> {
+ *  surface can show a quiet "coming soon" empty state instead of a crash.
+ *  `has_more` drives the library's "Load more" affordance (defaults to false
+ *  if the backend omits it, which just hides the button rather than looping). */
+export async function fetchDeckBuilds(limit = 20, offset = 0): Promise<{ builds: DeckBuild[]; has_more: boolean }> {
   const url = requireUrl();
   const res = await fetchWithTimeout(
     `${url}/deck-builds?limit=${limit}&offset=${offset}`,
     { headers: await authHeaders() }, T_FAST, 'Loading deck library',
   );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/deck-builds');
-  const r = await json<{ builds: DeckBuild[] }>(res);
-  return r.builds || [];
+  const r = await json<{ builds: DeckBuild[]; has_more?: boolean }>(res);
+  return { builds: r.builds || [], has_more: !!r.has_more };
 }
 
 /** Studio session payload (§4) for a built deck: build-format options + the
