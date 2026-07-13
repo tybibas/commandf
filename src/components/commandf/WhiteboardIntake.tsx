@@ -58,6 +58,17 @@ export default function WhiteboardIntake({
   const [error, setError] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Guards the cancel-ambush: Back is clickable while phase==='reading', but
+  // submit()'s promise has no innate cancellation — without this, backing out
+  // mid-read still lets the resolved outline fire onOutlineReady and teleport
+  // the user into the deck editor after they already left. `aliveRef` gates
+  // every setState/onOutlineReady in submit's resolution; `abortRef`
+  // additionally cancels the underlying network call instead of letting it
+  // run to completion for no reason.
+  const aliveRef = useRef(true);
+  const abortRef = useRef<AbortController | null>(null);
+  useEffect(() => () => { aliveRef.current = false; abortRef.current?.abort(); }, []);
+
   // Revoke the object URL whenever the file changes or the component unmounts
   // — object URLs otherwise leak for the life of the document.
   useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
@@ -91,10 +102,14 @@ export default function WhiteboardIntake({
   const submit = async () => {
     if (!file || phase === 'reading') return;
     setPhase('reading'); setError('');
+    const controller = new AbortController();
+    abortRef.current = controller;
     try {
-      const outline = await whiteboardIntake(file, hint.trim() || undefined);
+      const outline = await whiteboardIntake(file, hint.trim() || undefined, controller.signal);
+      if (!aliveRef.current) return;
       onOutlineReady(outline);
     } catch (e: unknown) {
+      if (!aliveRef.current) return;
       if (e instanceof EndpointPendingError) { setPhase('pending'); return; }
       const message = e instanceof WhiteboardIntakeFailedError
         ? e.message
@@ -102,6 +117,18 @@ export default function WhiteboardIntake({
       setError(message);
       setPhase('error');
     }
+  };
+
+  // Back during an in-flight read cancels the network call and resets local
+  // phase state (rather than leaving it 'reading') so re-entering this
+  // surface later starts clean instead of resuming mid-read.
+  const handleBack = () => {
+    if (phase === 'reading') {
+      abortRef.current?.abort();
+      setPhase('idle');
+      setError('');
+    }
+    onBack();
   };
 
   const idle = phase === 'idle';
@@ -112,7 +139,7 @@ export default function WhiteboardIntake({
         <div className="w-full max-w-4xl rounded-card border border-border-light bg-bg-elevated shadow-float overflow-hidden">
           <div className="px-5 pt-4">
             <button
-              type="button" onClick={onBack} aria-label="Back"
+              type="button" onClick={handleBack} aria-label="Back"
               className={`inline-flex items-center justify-center w-8 h-8 rounded-control text-text-muted hover:text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS}`}
             >
               <ArrowLeft className="w-4 h-4" strokeWidth={1.75} />

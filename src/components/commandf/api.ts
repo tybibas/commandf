@@ -338,12 +338,22 @@ const T_WHITEBOARD = 90000;
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
  * timeout from an HTTP/error response and from an empty-but-successful result. */
 async function fetchWithTimeout(
-  input: string, init: RequestInit, ms: number, label: string,
+  input: string, init: RequestInit, ms: number, label: string, externalSignal?: AbortSignal,
 ): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
+  // Combine the internal timeout-abort with an optional caller-supplied signal
+  // (same `AbortSignal.any` pattern the streamDeckSSE-family calls use below),
+  // so a caller can cancel the request early (e.g. the user backs out of a
+  // screen) without waiting for the full timeout budget. `AbortSignal.any` is
+  // widely supported but not in this TS lib target's DOM types yet — narrow
+  // via `unknown` instead of `any` to keep the no-explicit-any rule clean.
+  const anyAbortSignal = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
+  const combined = externalSignal
+    ? anyAbortSignal.any?.([externalSignal, ctrl.signal]) ?? ctrl.signal
+    : ctrl.signal;
   try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
+    return await fetch(input, { ...init, signal: combined });
   } catch (e: any) {
     if (e?.name === 'AbortError') throw new RequestTimeoutError(label);
     throw e;
@@ -1337,8 +1347,12 @@ export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'i
  *    400 `{detail:"empty file"|"file too large"}` → plain Error(detail) (the
  *      caller should mostly pre-empt this with a client-side size check, but
  *      the backend's own 400 is still surfaced verbatim as a fallback).
- *    any other non-2xx → plain Error(detail ?? `HTTP ${status}`). */
-export async function whiteboardIntake(file: File, requestHint?: string): Promise<DeckOutline> {
+ *    any other non-2xx → plain Error(detail ?? `HTTP ${status}`).
+ *
+ *  `signal` (optional): lets the caller cancel the in-flight vision call —
+ *  e.g. the user hits Back while the photo is still being read — instead of
+ *  leaving it to resolve into a component that already navigated away. */
+export async function whiteboardIntake(file: File, requestHint?: string, signal?: AbortSignal): Promise<DeckOutline> {
   const url = requireUrl();
   const form = new FormData();
   form.append('file', file);
@@ -1348,7 +1362,7 @@ export async function whiteboardIntake(file: File, requestHint?: string): Promis
   const post = (token: string) => fetchWithTimeout(
     `${url}/whiteboard-intake`,
     { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
-    T_WHITEBOARD, 'Reading your whiteboard',
+    T_WHITEBOARD, 'Reading your whiteboard', signal,
   );
 
   let res = await post(await bearer());
