@@ -52,7 +52,7 @@ const tagMsgs = (msgs: Message[]): Message[] => msgs.map((m) => m._key ? m : mkM
 // specific figure. Deck-building is the separate plum pill (a mode switch),
 // so it is intentionally not one of these cards.
 const PROMPT_PRECEDENT = 'Have we advised on an insurance brokerage roll-up before?';
-const PROMPT_COMPARE = 'Compare our Acrisure and K2 Insurance work on buy-and-build strategy';
+const PROMPT_COMPARE = 'Compare our Acrisure and EverQuote work: what did we deliver for each?';
 const PROMPT_FIGURE = 'What synergy assumptions did we use in past roll-up models?';
 const PROMPT_PROOF = 'Have we delivered comparable results for an agency client before?';
 const PROMPT_POSITIONING = 'Compare how we positioned our two most recent client pitches';

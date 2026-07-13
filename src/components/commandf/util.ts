@@ -121,8 +121,12 @@ function prettyType(raw: string): string {
 /** A confidence band label for a similarity score (0–1), or null if absent. */
 export function confidenceBand(similarity?: number): 'High' | 'Medium' | 'Low' | null {
   if (typeof similarity !== 'number' || isNaN(similarity)) return null;
-  if (similarity >= 0.7) return 'High';
-  if (similarity >= 0.45) return 'Medium';
+  // Calibrated to the REAL retrieval score scale: the backend's vector leg
+  // matches from 0.35 up and only flags below 0.25 as low-confidence
+  // (execution/commandf/tools/rag.py) — the old 0.45/0.7 bands labeled
+  // normal on-point matches "Low relevance".
+  if (similarity >= 0.5) return 'High';
+  if (similarity >= 0.3) return 'Medium';
   return 'Low';
 }
 
