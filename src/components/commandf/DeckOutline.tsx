@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react';
 import {
   ArrowLeft, Sparkles, ChevronUp, ChevronDown, Trash2, FileText, Loader2,
+  AlertTriangle, EyeOff,
 } from 'lucide-react';
 import type { DeckOutline as Outline, OutlineSlide } from './api';
 import SlideSkeleton from './SlideSkeleton';
+
+// Whiteboard-intake only (see api.ts's OutlineSlide.confidence doc). A slide
+// below this the vision model itself flagged as an uncertain transcription —
+// surfaced as a "verify" badge/tint so the consultant knows where to look
+// before building, never silently trusted at face value.
+const LOW_CONFIDENCE_THRESHOLD = 0.6;
 
 // Stable per-slide id for React keys — avoids index-keying when slides reorder/delete.
 type SlidewithId = OutlineSlide & { _stableId: string };
@@ -34,6 +41,11 @@ export default function DeckOutline({
   onBuild: (approvedPlan: Record<string, unknown>) => void;
   building?: boolean;
 }) {
+  // Whiteboard-intake additions (rendered around the otherwise-unchanged
+  // approval flow below): a callout for anything the vision model couldn't
+  // read, and — inline on each slide card — a low-confidence flag. Both are
+  // no-ops (undefined/empty) for a normal retrieval-grounded outline.
+  const illegible = outline.illegible ?? [];
   const [thought, setThought] = useState(outline.governing_thought);
   const [slides, setSlides] = useState<SlidewithId[]>(() => outline.slides.map(withId));
   const [view, setView] = useState<'storyline' | 'layout'>('storyline');
@@ -69,7 +81,12 @@ export default function DeckOutline({
         slide_template: s.slide_template,
         lede: s.lede,
         evidence_ns: s.evidence_ns ?? [],
-        must_show: s.must_show ?? '',
+        // Whiteboard-intake slides carry `must_show` as a string[] of
+        // transcribed bullets (see api.ts); the build endpoint's plan schema
+        // expects a string everywhere else — join rather than send the array
+        // through, so an approved whiteboard outline builds identically to a
+        // normal one.
+        must_show: Array.isArray(s.must_show) ? s.must_show.join('\n') : (s.must_show ?? ''),
       })),
     });
   };
@@ -87,6 +104,28 @@ export default function DeckOutline({
               </button>
               <span className="text-caption text-text-muted font-medium">Outline · approve before building</span>
             </div>
+
+            {/* Whiteboard-intake only: what the vision model would not invent.
+                Framed as a deliberate discipline, not an apology. */}
+            {illegible.length > 0 && (
+              <div className="mb-4 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3.5">
+                <div className="flex items-start gap-2.5">
+                  <EyeOff className="w-4 h-4 text-text-muted shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
+                  <div className="min-w-0">
+                    <p className="text-caption font-medium text-text-primary">What we didn&#39;t invent</p>
+                    <p className="mt-0.5 text-caption text-text-secondary leading-relaxed">
+                      A few spots in the photo weren&#39;t legible enough to transcribe. Rather than guess, we left them for you to fill in.
+                    </p>
+                    <ul className="mt-2 space-y-1">
+                      {illegible.map((note, i) => (
+                        <li key={i} className="text-caption text-text-muted leading-relaxed">· {note}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <label htmlFor="deck-thought" className="text-caption text-text-muted font-medium">The one thing this deck proves</label>
             <textarea id="deck-thought" value={thought} onChange={(e) => setThought(e.target.value)} rows={2} disabled={building}
               className={`mt-1.5 w-full resize-y rounded-surface border border-border bg-bg-secondary px-3.5 py-2.5 font-display text-lg font-light leading-snug text-text-primary outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS} disabled:opacity-60`} />
@@ -138,8 +177,10 @@ export default function DeckOutline({
               </div>
             ) : (
             <div className="space-y-2">
-            {slides.map((s, i) => (
-              <div key={s._stableId} id={`sl-${i}`} className={`group rounded-surface border border-l-2 bg-bg-secondary/40 pl-3 pr-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-border-light border-l-structure' : 'border-border-light'}`}>
+            {slides.map((s, i) => {
+              const lowConfidence = typeof s.confidence === 'number' && s.confidence < LOW_CONFIDENCE_THRESHOLD;
+              return (
+              <div key={s._stableId} id={`sl-${i}`} className={`group rounded-surface border border-l-2 bg-bg-secondary/40 pl-3 pr-3.5 py-3 flex items-start gap-3 animate-slide-up transition-colors ${focusIndex === i ? 'border-border-light border-l-structure' : lowConfidence ? 'border-border-light border-l-warning' : 'border-border-light'}`}>
                 <span className="mt-0.5 shrink-0 inline-flex items-center justify-center w-7 h-6 rounded-control bg-bg-tertiary font-mono text-micro text-text-secondary" aria-hidden>
                   S{i + 1}
                 </span>
@@ -148,6 +189,14 @@ export default function DeckOutline({
                     className={`w-full bg-transparent text-body text-text-primary leading-snug outline-none border-b border-transparent focus:border-border-hover transition-colors ${MOTION} disabled:opacity-60`} />
                   <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
                     <span className="inline-flex items-center px-1.5 py-0.5 rounded-sm bg-bg-tertiary text-micro text-text-muted">{prettyTemplate(s.slide_template)}</span>
+                    {lowConfidence && (
+                      <span
+                        title={`Transcription confidence ${Math.round((s.confidence as number) * 100)}% — double-check this slide against the photo.`}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-warning-soft text-warning text-micro font-medium"
+                      >
+                        <AlertTriangle className="w-3 h-3" strokeWidth={2} aria-hidden /> Verify
+                      </span>
+                    )}
                     {(s.sources ?? []).slice(0, 3).map((src) => (
                       <span key={src.n} title={src.file} className="inline-flex items-center gap-1 max-w-[180px] px-1.5 py-0.5 rounded-sm border border-border-light text-micro text-text-muted">
                         <FileText className="w-3 h-3 shrink-0" strokeWidth={1.75} aria-hidden />
@@ -165,7 +214,8 @@ export default function DeckOutline({
                   <button type="button" onClick={() => remove(i)} disabled={building} className={ICON_BTN} aria-label="Delete slide"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
-            ))}
+              );
+            })}
             </div>
             )}
           </div>

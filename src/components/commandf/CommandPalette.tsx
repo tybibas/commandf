@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, CornerDownLeft } from 'lucide-react';
+import { Search, CornerDownLeft, type LucideIcon } from 'lucide-react';
 
 export interface PaletteCommand {
   id: string;
   label: string;
   hint?: string;                 // right-aligned muted hint, e.g. "Deck" or a timeAgo
   group?: string;                // section label, e.g. "Actions" / "Recent"
-  icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  // Typed to LucideIcon (not a hand-narrowed ComponentType) — every icon in
+  // this app is a lucide icon, and a narrower alias mismatches lucide's
+  // ref-forwarding signature (same fix as Landing.tsx's QuickAction/ExampleCard).
+  icon?: LucideIcon;
   keywords?: string;             // extra search terms
   run: () => void;
 }

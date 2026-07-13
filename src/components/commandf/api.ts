@@ -116,9 +116,17 @@ export type OutlineSource = { n: number; file: string; link?: string; snippet?: 
 export type OutlineSlide = {
   slide_template: string;
   lede: string;
-  must_show?: string;
+  // Normally a string (the planner's own shape). A whiteboard-intake slide's
+  // `must_show` arrives as a string[] of transcribed bullets instead — widened
+  // here rather than narrowed on the backend; DeckOutline's build() normalizes
+  // either shape back to a string before it round-trips as `approved_plan`.
+  must_show?: string | string[];
   evidence_ns?: number[];
   sources?: OutlineSource[];
+  // Whiteboard-intake only: the vision model's self-reported transcription
+  // confidence (0-1) for this slide. Absent (undefined) on every normal
+  // /generate-deck/outline slide — existing callers see no change.
+  confidence?: number;
 };
 export type DeckOutline = {
   deliverable_type?: string;
@@ -128,12 +136,26 @@ export type DeckOutline = {
   slides: OutlineSlide[];
   sources_pool: OutlineSource[];
   plan: Record<string, unknown>;
+  // Whiteboard-intake only (POST /whiteboard-intake) — both absent on the
+  // normal outline endpoint. `illegible` lists regions/notes the vision model
+  // could not transcribe (never invented); `source` tags provenance so the UI
+  // can tell a photo-derived outline from a retrieval-grounded one.
+  illegible?: string[];
+  source?: string;
 };
 
 /** The three deliverable types the deck generator validates as a structured enum
  * — any other value returns HTTP 400. Every other UI chip is folded into the
  * request prose instead (the planner is LLM-driven and adapts). See DeckSurface. */
 export const DECK_ENUM_TYPES = new Set(['proposal', 'engagement_recap', 'pov_memo']);
+
+/** Client-side size guard for POST /whiteboard-intake, mirroring the backend's
+ * OWN threshold exactly: `_MAX_UPLOAD_BYTES` in modal_commandf.py (40 MB) is
+ * what actually 400s the request (`whiteboard_intake_endpoint` checks against
+ * that constant, not the smaller 20 MB `_MAX_IMAGE_BYTES` the vision call itself
+ * guards with, which would surface as a 422 instead). Failing fast client-side
+ * on the SAME number avoids a pointless upload only to be told "file too large". */
+export const WHITEBOARD_MAX_BYTES = 40 * 1024 * 1024;
 
 // ── Deck Studio (C-2) — edit-op protocol & reflection payloads ───────────────
 // Contract: .agents/C2_DECKSTUDIO_CONTRACT.md (backend lane, feat/commandf-brain-v2).
@@ -263,6 +285,20 @@ export class EndpointPendingError extends Error {
   }
 }
 
+/** Thrown on the whiteboard-intake endpoint's 422 (`whiteboard_intake_failed`)
+ * — an empty/unusable photo or a model reply the backend couldn't normalize
+ * into an outline. `message` is the backend's own `detail` text, safe to show
+ * verbatim (already human-phrased, e.g. "the photo may be too blurry, dark, or
+ * not actually a storyboard sketch"). Distinct from EndpointPendingError (which
+ * means "unreachable") — this means "reached it, and it genuinely couldn't
+ * read that photo," which the UI offers a retry for, not a "try later" note. */
+export class WhiteboardIntakeFailedError extends Error {
+  constructor(detail: string) {
+    super(detail || 'Could not read that photo.');
+    this.name = 'WhiteboardIntakeFailedError';
+  }
+}
+
 // ── Resilience primitives ─────────────────────────────────────────────────────
 
 /** Thrown when a fetch is aborted by our own timeout guard (distinct from a
@@ -291,6 +327,12 @@ const T_GEN = 30000;     // generation submits and status polls (deck, survey, u
 // (~30-45s to first byte) ON TOP OF a real planning call. Reset on every SSE
 // event (heartbeats included), so this is a hang guard, not a hard call ceiling.
 const T_OUTLINE = 90000;
+// Whiteboard intake (POST /whiteboard-intake) is a single synchronous call —
+// no SSE progress to reset against — but shares the SAME cold-start-plus-one-
+// real-model-call profile as the outline endpoint (a cold Modal container adds
+// ~30-45s before the vision call itself even starts), so it gets the same budget
+// rather than the shorter T_GEN.
+const T_WHITEBOARD = 90000;
 
 /** fetch() with an AbortController-backed timeout. Rejects with
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
@@ -1272,4 +1314,56 @@ export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'i
   );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }>(res);
+}
+
+// ── Whiteboard intake (C1) — photo → DeckOutline, no RAG retrieval ──────────
+// Backend: execution/commandf/whiteboard_intake.py + POST /whiteboard-intake
+// (modal_commandf.py, v64). Single synchronous multipart call — no job/poll,
+// the outline comes back in the response body, in the SAME shape
+// generateDeckOutline/streamDeckOutline return (plus `illegible` + `source`;
+// see the DeckOutline type above), so the caller feeds it straight to the
+// existing outline-approval UI.
+
+/** Photo (+ optional free-text hint) → an approvable DeckOutline. Auth mirrors
+ *  every other endpoint here (Bearer JWT via `bearer()`), with ONE difference:
+ *  a 401 gets exactly one retry after a forced `refreshSession()` — the same
+ *  belt-and-suspenders a cached-but-expired token needs that `downloadFileFresh`
+ *  already applies to downloads, since this call can sit on a slow vision
+ *  round-trip long enough for a borderline-fresh token to expire mid-flight.
+ *
+ *  Error mapping:
+ *    404/501 → EndpointPendingError (unreachable, not a real rejection).
+ *    422 `{error:"whiteboard_intake_failed", detail}` → WhiteboardIntakeFailedError(detail).
+ *    400 `{detail:"empty file"|"file too large"}` → plain Error(detail) (the
+ *      caller should mostly pre-empt this with a client-side size check, but
+ *      the backend's own 400 is still surfaced verbatim as a fallback).
+ *    any other non-2xx → plain Error(detail ?? `HTTP ${status}`). */
+export async function whiteboardIntake(file: File, requestHint?: string): Promise<DeckOutline> {
+  const url = requireUrl();
+  const form = new FormData();
+  form.append('file', file);
+  const hint = (requestHint ?? '').trim();
+  if (hint) form.append('request_hint', hint);
+
+  const post = (token: string) => fetchWithTimeout(
+    `${url}/whiteboard-intake`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
+    T_WHITEBOARD, 'Reading your whiteboard',
+  );
+
+  let res = await post(await bearer());
+  if (res.status === 401) {
+    await supabase.auth.refreshSession();
+    res = await post(await bearer());
+  }
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/whiteboard-intake');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string; detail?: string } | null;
+    if (res.status === 401) throw new NotSignedInError();
+    if (res.status === 422 && body?.error === 'whiteboard_intake_failed') {
+      throw new WhiteboardIntakeFailedError(body.detail || '');
+    }
+    throw new Error(body?.detail || `HTTP ${res.status}`);
+  }
+  return json<DeckOutline>(res);
 }
