@@ -868,8 +868,10 @@ export async function fetchDeckBuilds(limit = 20, offset = 0): Promise<{ builds:
     { headers: await authHeaders() }, T_FAST, 'Loading deck library',
   );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/deck-builds');
-  const r = await json<{ builds: DeckBuild[]; has_more?: boolean }>(res);
-  return { builds: r.builds || [], has_more: !!r.has_more };
+  // Backend envelope key is `items` (modal_commandf.py GET /deck-builds);
+  // the FE-facing name stays `builds` for callers.
+  const r = await json<{ items: DeckBuild[]; has_more?: boolean }>(res);
+  return { builds: r.items || [], has_more: !!r.has_more };
 }
 
 /** Studio session payload (§4) for a built deck: build-format options + the
