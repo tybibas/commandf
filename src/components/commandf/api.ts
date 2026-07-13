@@ -211,8 +211,32 @@ export type DeckGrounding = {
     exemplars: StyleExemplar[];
   };
 };
+/** One op envelope as persisted inside a chat turn (§2.1 fields + the
+ *  forward-apply outcome stamped on by the backend). Same shape as `DeckOp`
+ *  plus `status`/`error`, so a restored turn's op cards render identically to
+ *  a live one (`DeckChat`'s `OpEntry` splits this into `{ op, status, error }`). */
+export type ChatTurnOp = DeckOp & { status: 'applied' | 'failed'; error?: string };
+
+/** One persisted chat exchange (a user instruction + the assistant's reply for
+ *  the batch it produced) — the server-side transcript restore contract.
+ *  Persisted no-DDL inside `commandf_jobs.result.chat_turns` (bounded, oldest
+ *  trimmed first) and returned verbatim by GET /generate-deck/{job_id}/studio
+ *  so reopening a deck restores the conversation `DeckChat.tsx` otherwise
+ *  keeps only in local state. */
+export type ChatTurnRecord = {
+  turn_id: string;
+  ts: string;
+  user_message: string;
+  assistant_text: string;
+  batch_id: string;
+  deck_rev: number;
+  ops: ChatTurnOp[];
+};
+
 /** Returned by GET /generate-deck/{job_id}/studio (§4). `slide_order` is the
- *  authoritative id→position map (id at 0-based index i is slide i+1 in the deck). */
+ *  authoritative id→position map (id at 0-based index i is slide i+1 in the deck).
+ *  `chat_turns` is the persisted copilot transcript (empty on a deck never
+ *  edited via chat, or built before this field existed — strict back-compat). */
 export type StudioSession = {
   deck_rev: number;
   slide_order: string[];
@@ -220,6 +244,7 @@ export type StudioSession = {
   active_format: string;
   active_target_category: string;
   grounding: DeckGrounding;
+  chat_turns: ChatTurnRecord[];
 };
 
 // ── Spend ledger (commandf_query_costs) ─────────────────────────────────────

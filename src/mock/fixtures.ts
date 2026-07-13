@@ -186,6 +186,7 @@ export const MOCK_STUDIO_SESSION: StudioSession = {
       ],
     },
   },
+  chat_turns: [],
 };
 
 // A canned edit-op batch stream (§3.1 SSE lines) — user asked to tighten the
