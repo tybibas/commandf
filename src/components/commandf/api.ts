@@ -799,6 +799,35 @@ export async function getDeckJobBySession(sessionId: string): Promise<DeckJobByS
   return json<DeckJobBySession>(res);
 }
 
+// ── Deck library (chat-history-style list of past deck builds) ──────────────
+// NOTE (contract flag): `GET /deck-builds` is being built in parallel on the
+// backend lane — this client is written against the agreed shape below and
+// degrades gracefully (EndpointPendingError) while the route is still landing.
+export type DeckBuild = {
+  job_id: string;
+  created_at: string;
+  status: JobStatus['status'];
+  title?: string;
+  prospect_company?: string;
+  slide_count?: number;
+  artifact_available?: boolean;
+  session_id?: string | null;
+};
+
+/** `GET /deck-builds?limit=&offset=` — newest-first list of past deck builds for
+ *  the "Decks" library surface. Throws EndpointPendingError on 404/501 so the
+ *  surface can show a quiet "coming soon" empty state instead of a crash. */
+export async function fetchDeckBuilds(limit = 20, offset = 0): Promise<DeckBuild[]> {
+  const url = requireUrl();
+  const res = await fetchWithTimeout(
+    `${url}/deck-builds?limit=${limit}&offset=${offset}`,
+    { headers: await authHeaders() }, T_FAST, 'Loading deck library',
+  );
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/deck-builds');
+  const r = await json<{ builds: DeckBuild[] }>(res);
+  return r.builds || [];
+}
+
 /** Studio session payload (§4) for a built deck: build-format options + the
  *  category-grounding provenance. Throws EndpointPending on 404/501 so the surface
  *  can degrade gracefully while the backend endpoint is still landing. */
