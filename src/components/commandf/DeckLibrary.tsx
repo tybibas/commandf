@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Download, Layers, Presentation, RefreshCw } from 'lucide-react';
+import { Download, Layers, Loader2, Presentation, RefreshCw } from 'lucide-react';
 import { SurfaceHeader } from './generationUI';
 import { timeAgo } from './util';
 import {
   fetchDeckBuilds, authedDownloadUrl, deckDownloadUrl, EndpointPendingError,
   type DeckBuild,
 } from './api';
+
+const PAGE_SIZE = 20;
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
@@ -50,18 +52,33 @@ function DeckBuildRow({
   onOpenInStudio: (build: DeckBuild) => void;
   opening: boolean;
 }) {
-  const [downloadHref, setDownloadHref] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
   const chip = statusChip(build.status);
   const canDownload = build.artifact_available !== false && (build.status === 'complete' || build.status === 'done');
-
-  useEffect(() => {
-    let alive = true;
-    if (!canDownload) { setDownloadHref(null); return; }
-    authedDownloadUrl(deckDownloadUrl(build.job_id)).then((href) => { if (alive) setDownloadHref(href); });
-    return () => { alive = false; };
-  }, [build.job_id, canDownload]);
-
   const title = build.title || build.prospect_company || 'Untitled deck';
+
+  // Click-time download: fetch a FRESH signed URL at the moment of the click
+  // rather than baking one into a render-time `<a href>` via useEffect — a
+  // token computed once at list-load time goes stale on a long-lived list
+  // (token expiry / laptop sleep) and dead-ends with no retry.
+  // `authedDownloadUrl` reads the session via `supabase.auth.getSession()`,
+  // which itself refreshes an expired token, so calling it here (instead of
+  // at mount) always signs the href with a live token.
+  const handleDownload = useCallback(async () => {
+    if (!canDownload || downloading) return;
+    setDownloading(true);
+    try {
+      const href = await authedDownloadUrl(deckDownloadUrl(build.job_id));
+      const a = document.createElement('a');
+      a.href = href;
+      a.download = `${title.replace(/[\\/:*?"<>|]+/g, '_') || build.job_id}.pptx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      setDownloading(false);
+    }
+  }, [build.job_id, canDownload, downloading, title]);
 
   return (
     <div className="group flex items-center gap-3 rounded-surface border border-border-light bg-bg-secondary px-3.5 py-3 hover:border-border-hover hover:bg-bg-tertiary transition-colors">
@@ -81,17 +98,18 @@ function DeckBuildRow({
       <span className={`shrink-0 inline-flex items-center h-5 px-2 rounded-control text-micro font-medium ${chip.className}`}>
         {chip.label}
       </span>
-      <a
-        href={downloadHref ?? undefined}
-        download
-        aria-disabled={!downloadHref}
+      <button
+        type="button"
+        onClick={handleDownload}
+        disabled={!canDownload || downloading}
         aria-label="Download .pptx"
-        title="Download .pptx"
-        onClick={(e) => { if (!downloadHref) e.preventDefault(); }}
-        className={`shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-control text-text-secondary hover:text-text-primary hover:bg-bg-primary transition-colors ${MOTION} ${FOCUS} ${downloadHref ? '' : 'opacity-40 pointer-events-none'}`}
+        title={downloading ? 'Preparing download…' : 'Download .pptx'}
+        className={`shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-control text-text-secondary hover:text-text-primary hover:bg-bg-primary transition-colors ${MOTION} ${FOCUS} ${(!canDownload || downloading) ? 'opacity-40 pointer-events-none' : ''}`}
       >
-        <Download className="w-3.5 h-3.5" strokeWidth={1.75} />
-      </a>
+        {downloading
+          ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+          : <Download className="w-3.5 h-3.5" strokeWidth={1.75} />}
+      </button>
       <button
         type="button"
         onClick={() => onOpenInStudio(build)}
@@ -121,12 +139,14 @@ export default function DeckLibrary({
   const [state, setState] = useState<'loading' | 'ready' | 'pending' | 'error'>('loading');
   const [openingJobId, setOpeningJobId] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     let live = true;
     setState((s) => (builds.length ? s : 'loading'));
-    fetchDeckBuilds()
-      .then((data) => { if (live) { setBuilds(data); setState('ready'); } })
+    fetchDeckBuilds(PAGE_SIZE, 0)
+      .then((data) => { if (live) { setBuilds(data.builds); setHasMore(data.has_more); setState('ready'); } })
       .catch((e) => {
         if (!live) return;
         // 404/501 (backend lane not deployed yet) reads as a quiet "no decks
@@ -139,6 +159,21 @@ export default function DeckLibrary({
   }, [nonce]);
 
   const reload = () => setNonce((n) => n + 1);
+
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    fetchDeckBuilds(PAGE_SIZE, builds.length)
+      .then((data) => {
+        setBuilds((prev) => [...prev, ...data.builds]);
+        setHasMore(data.has_more);
+      })
+      .catch(() => {
+        // A failed "load more" leaves the already-loaded page intact — the
+        // operator can just click again rather than losing the visible list.
+      })
+      .finally(() => setLoadingMore(false));
+  }, [builds.length, hasMore, loadingMore]);
 
   const handleOpen = useCallback(async (build: DeckBuild) => {
     if (openingJobId) return;
@@ -189,9 +224,24 @@ export default function DeckLibrary({
           )}
 
           {state === 'ready' && builds.length > 0 && (
-            builds.map((b) => (
-              <DeckBuildRow key={b.job_id} build={b} onOpenInStudio={handleOpen} opening={openingJobId === b.job_id} />
-            ))
+            <>
+              {builds.map((b) => (
+                <DeckBuildRow key={b.job_id} build={b} onOpenInStudio={handleOpen} opening={openingJobId === b.job_id} />
+              ))}
+              {hasMore && (
+                <div className="pt-2 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={loadMore}
+                    disabled={loadingMore}
+                    className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-control border border-border-light text-caption text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS} disabled:opacity-50`}
+                  >
+                    {loadingMore && <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden />}
+                    {loadingMore ? 'Loading…' : 'Load more'}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

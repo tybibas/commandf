@@ -111,7 +111,7 @@ export default function DeckSurface({
   // editor below, skipping the brief/type intent screen entirely. `onBuild`
   // and everything after it is the SAME approved-plan path a normal
   // draftOutline() outline takes — no new build wiring.
-  initialOutline?: import('./api').DeckOutline | null;
+  initialOutline?: Outline | null;
   // Fires once, right after mount, if `initialOutline` was provided — lets the
   // host clear its one-shot seed (mirrors why `initialBrief`/`initialFileIds`
   // are read only at mount) so navigating back to this surface later doesn't
