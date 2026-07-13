@@ -494,7 +494,7 @@ export function CommandFPage({
         ]);
         loadSessions();
       }
-      setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: data.response, sources: data.sources || [] })]);
+      setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: data.response, sources: data.sources || [], synthesis: data.synthesis })]);
     } catch (e: any) {
       if (e instanceof StreamAbortedError) {
         // Cancelled by user — brief toast only, no inline bubble.

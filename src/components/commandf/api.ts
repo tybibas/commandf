@@ -30,6 +30,9 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
+  // Cross-engagement synthesis (1-3 sentences): present only when the answer
+  // drew on ≥2 distinct engagements. Rendered as a callout above the sources.
+  synthesis?: string;
   error?: boolean;
   /** Stable React key assigned by the UI at insertion time. Never from the backend. */
   _key?: string;
@@ -82,6 +85,10 @@ export type ChatResponse = {
   sources?: Source[];
   model_used?: string;
   session_id?: string;
+  // Cross-engagement synthesis (1-3 sentences) — present only when the answer
+  // drew on ≥2 distinct engagements. Carried on both /chat and the /chat/stream
+  // `done` event (sendChatStream casts the done event straight to ChatResponse).
+  synthesis?: string;
 };
 
 // Job shapes for the generation endpoints. The backend emits `complete` on
