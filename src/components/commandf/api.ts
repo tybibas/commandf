@@ -874,6 +874,35 @@ export async function fetchDeckBuilds(limit = 20, offset = 0): Promise<{ builds:
   return { builds: r.items || [], has_more: !!r.has_more };
 }
 
+// ── Build-cost estimator (spend-safety contract) ─────────────────────────────
+// Bucketed median/p80 of REAL recorded past-build costs, keyed by slide count.
+// NOTE (contract flag): `GET /deck-builds/estimate` is a sibling of `GET
+// /deck-builds` (same job/cost-ledger data source) — built against the agreed
+// shape below; degrades via EndpointPendingError while the route lands.
+export type DeckCostEstimate = {
+  estimate_usd: number | null;
+  p80_usd: number | null;
+  n_samples: number;
+  bucket: string;
+  reason: string | null;
+};
+
+/** `GET /deck-builds/estimate?slides=N` — a dollar estimate for a build of N
+ *  slides, derived from past builds' real recorded cost-ledger rows (never
+ *  fabricated: `estimate_usd`/`p80_usd` are null with `reason` set when the
+ *  matching slide-count bucket has too few samples). Throws EndpointPendingError
+ *  on 404/501 so the build surface can hide the estimate line quietly instead
+ *  of showing an error. */
+export async function fetchDeckCostEstimate(slides: number): Promise<DeckCostEstimate> {
+  const url = requireUrl();
+  const res = await fetchWithTimeout(
+    `${url}/deck-builds/estimate?slides=${encodeURIComponent(String(slides))}`,
+    { headers: await authHeaders() }, T_FAST, 'Loading cost estimate',
+  );
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/deck-builds/estimate');
+  return json<DeckCostEstimate>(res);
+}
+
 /** Studio session payload (§4) for a built deck: build-format options + the
  *  category-grounding provenance. Throws EndpointPending on 404/501 so the surface
  *  can degrade gracefully while the backend endpoint is still landing. */
