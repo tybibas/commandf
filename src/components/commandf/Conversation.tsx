@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import { AlertCircle, Sparkles, Copy, Check, PencilLine } from 'lucide-react';
+import { AlertCircle, Sparkles, Copy, Check, PencilLine, Layers } from 'lucide-react';
 import CommandFMarkdown from '../CommandFMarkdown';
 import { SourceList } from './SourceCard';
 import { groupSources } from './util';
@@ -90,6 +90,15 @@ function AssistantMessage({
             />
           </div>
         </>
+      )}
+      {m.synthesis && (
+        <div className="mt-4 flex items-start gap-2.5 rounded-surface border border-accent/20 bg-accent-soft px-3.5 py-2.5">
+          <Layers className="w-3.5 h-3.5 text-accent-ink shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
+          <div className="min-w-0">
+            <p className="text-caption font-medium text-accent-ink">Across engagements</p>
+            <p className="mt-0.5 text-body-sm text-text-secondary leading-relaxed">{m.synthesis}</p>
+          </div>
+        </div>
       )}
       {hasSources && (
         <SourceList sources={m.sources!} onReuse={onReuse} onBuildDeck={onBuildDeck} highlightN={highlightN} />

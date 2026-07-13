@@ -30,6 +30,9 @@ export type Message = {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
+  // Cross-engagement synthesis (1-3 sentences): present only when the answer
+  // drew on ≥2 distinct engagements. Rendered as a callout above the sources.
+  synthesis?: string;
   error?: boolean;
   /** Stable React key assigned by the UI at insertion time. Never from the backend. */
   _key?: string;
@@ -82,6 +85,10 @@ export type ChatResponse = {
   sources?: Source[];
   model_used?: string;
   session_id?: string;
+  // Cross-engagement synthesis (1-3 sentences) — present only when the answer
+  // drew on ≥2 distinct engagements. Carried on both /chat and the /chat/stream
+  // `done` event (sendChatStream casts the done event straight to ChatResponse).
+  synthesis?: string;
 };
 
 // Job shapes for the generation endpoints. The backend emits `complete` on
@@ -116,9 +123,17 @@ export type OutlineSource = { n: number; file: string; link?: string; snippet?: 
 export type OutlineSlide = {
   slide_template: string;
   lede: string;
-  must_show?: string;
+  // Normally a string (the planner's own shape). A whiteboard-intake slide's
+  // `must_show` arrives as a string[] of transcribed bullets instead — widened
+  // here rather than narrowed on the backend; DeckOutline's build() normalizes
+  // either shape back to a string before it round-trips as `approved_plan`.
+  must_show?: string | string[];
   evidence_ns?: number[];
   sources?: OutlineSource[];
+  // Whiteboard-intake only: the vision model's self-reported transcription
+  // confidence (0-1) for this slide. Absent (undefined) on every normal
+  // /generate-deck/outline slide — existing callers see no change.
+  confidence?: number;
 };
 export type DeckOutline = {
   deliverable_type?: string;
@@ -128,12 +143,26 @@ export type DeckOutline = {
   slides: OutlineSlide[];
   sources_pool: OutlineSource[];
   plan: Record<string, unknown>;
+  // Whiteboard-intake only (POST /whiteboard-intake) — both absent on the
+  // normal outline endpoint. `illegible` lists regions/notes the vision model
+  // could not transcribe (never invented); `source` tags provenance so the UI
+  // can tell a photo-derived outline from a retrieval-grounded one.
+  illegible?: string[];
+  source?: string;
 };
 
 /** The three deliverable types the deck generator validates as a structured enum
  * — any other value returns HTTP 400. Every other UI chip is folded into the
  * request prose instead (the planner is LLM-driven and adapts). See DeckSurface. */
 export const DECK_ENUM_TYPES = new Set(['proposal', 'engagement_recap', 'pov_memo']);
+
+/** Client-side size guard for POST /whiteboard-intake, mirroring the backend's
+ * OWN threshold exactly: `_MAX_UPLOAD_BYTES` in modal_commandf.py (40 MB) is
+ * what actually 400s the request (`whiteboard_intake_endpoint` checks against
+ * that constant, not the smaller 20 MB `_MAX_IMAGE_BYTES` the vision call itself
+ * guards with, which would surface as a 422 instead). Failing fast client-side
+ * on the SAME number avoids a pointless upload only to be told "file too large". */
+export const WHITEBOARD_MAX_BYTES = 40 * 1024 * 1024;
 
 // ── Deck Studio (C-2) — edit-op protocol & reflection payloads ───────────────
 // Contract: .agents/C2_DECKSTUDIO_CONTRACT.md (backend lane, feat/commandf-brain-v2).
@@ -211,8 +240,32 @@ export type DeckGrounding = {
     exemplars: StyleExemplar[];
   };
 };
+/** One op envelope as persisted inside a chat turn (§2.1 fields + the
+ *  forward-apply outcome stamped on by the backend). Same shape as `DeckOp`
+ *  plus `status`/`error`, so a restored turn's op cards render identically to
+ *  a live one (`DeckChat`'s `OpEntry` splits this into `{ op, status, error }`). */
+export type ChatTurnOp = DeckOp & { status: 'applied' | 'failed'; error?: string };
+
+/** One persisted chat exchange (a user instruction + the assistant's reply for
+ *  the batch it produced) — the server-side transcript restore contract.
+ *  Persisted no-DDL inside `commandf_jobs.result.chat_turns` (bounded, oldest
+ *  trimmed first) and returned verbatim by GET /generate-deck/{job_id}/studio
+ *  so reopening a deck restores the conversation `DeckChat.tsx` otherwise
+ *  keeps only in local state. */
+export type ChatTurnRecord = {
+  turn_id: string;
+  ts: string;
+  user_message: string;
+  assistant_text: string;
+  batch_id: string;
+  deck_rev: number;
+  ops: ChatTurnOp[];
+};
+
 /** Returned by GET /generate-deck/{job_id}/studio (§4). `slide_order` is the
- *  authoritative id→position map (id at 0-based index i is slide i+1 in the deck). */
+ *  authoritative id→position map (id at 0-based index i is slide i+1 in the deck).
+ *  `chat_turns` is the persisted copilot transcript (empty on a deck never
+ *  edited via chat, or built before this field existed — strict back-compat). */
 export type StudioSession = {
   deck_rev: number;
   slide_order: string[];
@@ -220,6 +273,7 @@ export type StudioSession = {
   active_format: string;
   active_target_category: string;
   grounding: DeckGrounding;
+  chat_turns: ChatTurnRecord[];
 };
 
 // ── Spend ledger (commandf_query_costs) ─────────────────────────────────────
@@ -263,6 +317,20 @@ export class EndpointPendingError extends Error {
   }
 }
 
+/** Thrown on the whiteboard-intake endpoint's 422 (`whiteboard_intake_failed`)
+ * — an empty/unusable photo or a model reply the backend couldn't normalize
+ * into an outline. `message` is the backend's own `detail` text, safe to show
+ * verbatim (already human-phrased, e.g. "the photo may be too blurry, dark, or
+ * not actually a storyboard sketch"). Distinct from EndpointPendingError (which
+ * means "unreachable") — this means "reached it, and it genuinely couldn't
+ * read that photo," which the UI offers a retry for, not a "try later" note. */
+export class WhiteboardIntakeFailedError extends Error {
+  constructor(detail: string) {
+    super(detail || 'Could not read that photo.');
+    this.name = 'WhiteboardIntakeFailedError';
+  }
+}
+
 // ── Resilience primitives ─────────────────────────────────────────────────────
 
 /** Thrown when a fetch is aborted by our own timeout guard (distinct from a
@@ -291,17 +359,33 @@ const T_GEN = 30000;     // generation submits and status polls (deck, survey, u
 // (~30-45s to first byte) ON TOP OF a real planning call. Reset on every SSE
 // event (heartbeats included), so this is a hang guard, not a hard call ceiling.
 const T_OUTLINE = 90000;
+// Whiteboard intake (POST /whiteboard-intake) is a single synchronous call —
+// no SSE progress to reset against — but shares the SAME cold-start-plus-one-
+// real-model-call profile as the outline endpoint (a cold Modal container adds
+// ~30-45s before the vision call itself even starts), so it gets the same budget
+// rather than the shorter T_GEN.
+const T_WHITEBOARD = 90000;
 
 /** fetch() with an AbortController-backed timeout. Rejects with
  * RequestTimeoutError when the budget elapses so the caller can distinguish a
  * timeout from an HTTP/error response and from an empty-but-successful result. */
 async function fetchWithTimeout(
-  input: string, init: RequestInit, ms: number, label: string,
+  input: string, init: RequestInit, ms: number, label: string, externalSignal?: AbortSignal,
 ): Promise<Response> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
+  // Combine the internal timeout-abort with an optional caller-supplied signal
+  // (same `AbortSignal.any` pattern the streamDeckSSE-family calls use below),
+  // so a caller can cancel the request early (e.g. the user backs out of a
+  // screen) without waiting for the full timeout budget. `AbortSignal.any` is
+  // widely supported but not in this TS lib target's DOM types yet — narrow
+  // via `unknown` instead of `any` to keep the no-explicit-any rule clean.
+  const anyAbortSignal = AbortSignal as unknown as { any?: (signals: AbortSignal[]) => AbortSignal };
+  const combined = externalSignal
+    ? anyAbortSignal.any?.([externalSignal, ctrl.signal]) ?? ctrl.signal
+    : ctrl.signal;
   try {
-    return await fetch(input, { ...init, signal: ctrl.signal });
+    return await fetch(input, { ...init, signal: combined });
   } catch (e: any) {
     if (e?.name === 'AbortError') throw new RequestTimeoutError(label);
     throw e;
@@ -755,6 +839,37 @@ export async function getDeckJobBySession(sessionId: string): Promise<DeckJobByS
   );
   if (res.status === 404) return null;
   return json<DeckJobBySession>(res);
+}
+
+// ── Deck library (chat-history-style list of past deck builds) ──────────────
+// NOTE (contract flag): `GET /deck-builds` is being built in parallel on the
+// backend lane — this client is written against the agreed shape below and
+// degrades gracefully (EndpointPendingError) while the route is still landing.
+export type DeckBuild = {
+  job_id: string;
+  created_at: string;
+  status: JobStatus['status'];
+  title?: string;
+  prospect_company?: string;
+  slide_count?: number;
+  artifact_available?: boolean;
+  session_id?: string | null;
+};
+
+/** `GET /deck-builds?limit=&offset=` — newest-first list of past deck builds for
+ *  the "Decks" library surface. Throws EndpointPendingError on 404/501 so the
+ *  surface can show a quiet "coming soon" empty state instead of a crash.
+ *  `has_more` drives the library's "Load more" affordance (defaults to false
+ *  if the backend omits it, which just hides the button rather than looping). */
+export async function fetchDeckBuilds(limit = 20, offset = 0): Promise<{ builds: DeckBuild[]; has_more: boolean }> {
+  const url = requireUrl();
+  const res = await fetchWithTimeout(
+    `${url}/deck-builds?limit=${limit}&offset=${offset}`,
+    { headers: await authHeaders() }, T_FAST, 'Loading deck library',
+  );
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/deck-builds');
+  const r = await json<{ builds: DeckBuild[]; has_more?: boolean }>(res);
+  return { builds: r.builds || [], has_more: !!r.has_more };
 }
 
 /** Studio session payload (§4) for a built deck: build-format options + the
@@ -1272,4 +1387,60 @@ export async function uploadDocumentStatus(fileId: string): Promise<{ status: 'i
   );
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/upload');
   return json<{ status: 'indexing' | 'complete' | 'error'; chunks_indexed?: number; error?: string }>(res);
+}
+
+// ── Whiteboard intake (C1) — photo → DeckOutline, no RAG retrieval ──────────
+// Backend: execution/commandf/whiteboard_intake.py + POST /whiteboard-intake
+// (modal_commandf.py, v64). Single synchronous multipart call — no job/poll,
+// the outline comes back in the response body, in the SAME shape
+// generateDeckOutline/streamDeckOutline return (plus `illegible` + `source`;
+// see the DeckOutline type above), so the caller feeds it straight to the
+// existing outline-approval UI.
+
+/** Photo (+ optional free-text hint) → an approvable DeckOutline. Auth mirrors
+ *  every other endpoint here (Bearer JWT via `bearer()`), with ONE difference:
+ *  a 401 gets exactly one retry after a forced `refreshSession()` — the same
+ *  belt-and-suspenders a cached-but-expired token needs that `downloadFileFresh`
+ *  already applies to downloads, since this call can sit on a slow vision
+ *  round-trip long enough for a borderline-fresh token to expire mid-flight.
+ *
+ *  Error mapping:
+ *    404/501 → EndpointPendingError (unreachable, not a real rejection).
+ *    422 `{error:"whiteboard_intake_failed", detail}` → WhiteboardIntakeFailedError(detail).
+ *    400 `{detail:"empty file"|"file too large"}` → plain Error(detail) (the
+ *      caller should mostly pre-empt this with a client-side size check, but
+ *      the backend's own 400 is still surfaced verbatim as a fallback).
+ *    any other non-2xx → plain Error(detail ?? `HTTP ${status}`).
+ *
+ *  `signal` (optional): lets the caller cancel the in-flight vision call —
+ *  e.g. the user hits Back while the photo is still being read — instead of
+ *  leaving it to resolve into a component that already navigated away. */
+export async function whiteboardIntake(file: File, requestHint?: string, signal?: AbortSignal): Promise<DeckOutline> {
+  const url = requireUrl();
+  const form = new FormData();
+  form.append('file', file);
+  const hint = (requestHint ?? '').trim();
+  if (hint) form.append('request_hint', hint);
+
+  const post = (token: string) => fetchWithTimeout(
+    `${url}/whiteboard-intake`,
+    { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form },
+    T_WHITEBOARD, 'Reading your whiteboard', signal,
+  );
+
+  let res = await post(await bearer());
+  if (res.status === 401) {
+    await supabase.auth.refreshSession();
+    res = await post(await bearer());
+  }
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/whiteboard-intake');
+  if (!res.ok) {
+    const body = await res.json().catch(() => null) as { error?: string; detail?: string } | null;
+    if (res.status === 401) throw new NotSignedInError();
+    if (res.status === 422 && body?.error === 'whiteboard_intake_failed') {
+      throw new WhiteboardIntakeFailedError(body.detail || '');
+    }
+    throw new Error(body?.detail || `HTTP ${res.status}`);
+  }
+  return json<DeckOutline>(res);
 }

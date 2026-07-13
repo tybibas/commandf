@@ -96,7 +96,8 @@ const LENGTHS: { id: string; label: string }[] = [
 type OutlinePhase = 'idle' | 'loading' | 'error' | 'pending';
 
 export default function DeckSurface({
-  onBack, clientSlug, sessionId, initialBrief, initialFileIds, onOpenSurvey, onOpenStudio,
+  onBack, clientSlug, sessionId, initialBrief, initialFileIds, initialOutline, onOutlineConsumed,
+  onOpenSurvey, onOpenWhiteboard, onOpenStudio,
 }: {
   onBack: () => void;
   clientSlug?: string;
@@ -105,7 +106,19 @@ export default function DeckSurface({
   // Source-pinning (item 5): when the deck was launched from "Build a deck from
   // these sources", these Drive file_ids scope/seed retrieval to those documents.
   initialFileIds?: string[];
+  // Whiteboard-intake handoff (C1): a photo already came back as a full
+  // DeckOutline (POST /whiteboard-intake) — seed straight into the outline
+  // editor below, skipping the brief/type intent screen entirely. `onBuild`
+  // and everything after it is the SAME approved-plan path a normal
+  // draftOutline() outline takes — no new build wiring.
+  initialOutline?: Outline | null;
+  // Fires once, right after mount, if `initialOutline` was provided — lets the
+  // host clear its one-shot seed (mirrors why `initialBrief`/`initialFileIds`
+  // are read only at mount) so navigating back to this surface later doesn't
+  // silently reopen a stale photo's outline.
+  onOutlineConsumed?: () => void;
   onOpenSurvey?: () => void;
+  onOpenWhiteboard?: () => void;
   // Deck Studio (C-2) handoff. `seed`+`buildStatus` omitted (undefined/null) means
   // "open against an in-flight build" (§3.6) — the default approved-plan flow now
   // goes through this path. When absent entirely, DeckSurface falls back to the
@@ -131,7 +144,13 @@ export default function DeckSurface({
   // Which of the selected type's archetypal briefs the teaching panel is showing.
   const [exampleIdx, setExampleIdx] = useState(0);
 
-  const [outline, setOutline] = useState<Outline | null>(null);
+  const [outline, setOutline] = useState<Outline | null>(initialOutline ?? null);
+  // One-shot consume: tell the host to clear its seed right after we've read
+  // it, so a later plain "Build a deck" doesn't inherit a stale photo outline.
+  useEffect(() => {
+    if (initialOutline) onOutlineConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [outlinePhase, setOutlinePhase] = useState<OutlinePhase>('idle');
   const [outlineError, setOutlineError] = useState('');
   // Live "agent thinking" line, driven off the §3.5 stream's phase events. Empty
@@ -408,6 +427,13 @@ export default function DeckSurface({
           <button type="button" onClick={onOpenSurvey}
             className={`mt-2 inline-flex items-center gap-1 text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control`}>
             Building a survey compendium? Open that tool
+            <ArrowUpRight className="w-3 h-3" strokeWidth={2} aria-hidden />
+          </button>
+        )}
+        {onOpenWhiteboard && (
+          <button type="button" onClick={onOpenWhiteboard}
+            className={`mt-2 inline-flex items-center gap-1 text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control`}>
+            Have a whiteboard photo instead? Start from that
             <ArrowUpRight className="w-3 h-3" strokeWidth={2} aria-hidden />
           </button>
         )}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus, Database, Upload, Presentation, Table2, MessageSquare, Wand2, Loader2,
-  Search, GitCompare, Quote, Layers, Coins,
+  Search, GitCompare, Quote, Layers, Coins, Camera,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
@@ -12,7 +12,7 @@ import {
   fetchModels, fetchSessions, fetchBriefing, fetchHistory, sendChatStream, deleteSession,
   fetchSourcesStatus, startSync, fetchSyncStatus, connectDriveUrl, currentAuth, NotSignedInError,
   uploadDocument, uploadDocumentStatus, EndpointPendingError, optimizePrompt, StreamAbortedError,
-  getDeckJobBySession, generateDeckStatus, type DeckJobBySession,
+  getDeckJobBySession, generateDeckStatus, type DeckJobBySession, type DeckOutline, type DeckBuild,
 } from './commandf/api';
 import { useDictation } from '../hooks/useDictation';
 import MicButton from './commandf/MicButton';
@@ -29,7 +29,9 @@ import type { ThinkingStep } from './commandf/ThinkingIndicator';
 import Landing, { type QuickAction, type ExampleCard } from './commandf/Landing';
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
+import WhiteboardIntake from './commandf/WhiteboardIntake';
 import DeckStudio from './commandf/DeckStudio';
+import DeckLibrary from './commandf/DeckLibrary';
 import SpendPanel from './commandf/SpendPanel';
 import SurveySurface from './commandf/SurveySurface';
 import KnowledgePanel from './commandf/KnowledgePanel';
@@ -60,7 +62,7 @@ const PROMPT_ICP = 'What ICP and proof points did we lead with for a new client 
 // comparison after an answer with sources lands.
 const PROMPT_COMPARE_SOURCES = 'Compare the engagements cited above side by side: what patterns repeat?';
 
-type Surface = 'home' | 'chat' | 'deck' | 'survey' | 'deckstudio' | 'spend';
+type Surface = 'home' | 'chat' | 'deck' | 'whiteboard' | 'survey' | 'deckstudio' | 'spend' | 'decks';
 
 function greetingForNow(): string {
   // Anchor to Pacific time regardless of the viewer's local zone, so the
@@ -110,6 +112,11 @@ export function CommandFPage({
   const [showPalette, setShowPalette] = useState(false);
   const [deckSeed, setDeckSeed] = useState('');
   const [pinnedFileIds, setPinnedFileIds] = useState<string[]>([]);  // source-pinning for deck build
+  // Whiteboard-intake handoff (C1): the outline POST /whiteboard-intake already
+  // returned, seeded straight into DeckSurface's outline editor (initialOutline)
+  // — skips its brief/type intent screen entirely. Cleared once DeckSurface
+  // reads it (onOutlineConsumed) so a later plain "Build a deck" starts fresh.
+  const [whiteboardOutline, setWhiteboardOutline] = useState<DeckOutline | null>(null);
   // Deck Studio (C-2): the last deck job handed off from DeckSurface's "Edit in
   // studio →". Kept even after leaving the studio surface so the command
   // palette can jump straight back in without re-opening the build panel.
@@ -487,7 +494,7 @@ export function CommandFPage({
         ]);
         loadSessions();
       }
-      setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: data.response, sources: data.sources || [] })]);
+      setMessages((prev) => [...prev, mkMsg({ role: 'assistant', content: data.response, sources: data.sources || [], synthesis: data.synthesis })]);
     } catch (e: any) {
       if (e instanceof StreamAbortedError) {
         // Cancelled by user — brief toast only, no inline bubble.
@@ -574,6 +581,13 @@ export function CommandFPage({
     setSurface('deck');
   }, [messages]);
 
+  // Whiteboard-intake handoff (C1): the photo already came back as a full
+  // DeckOutline — jump straight to the deck surface's outline editor with it.
+  const handleWhiteboardOutline = useCallback((outline: DeckOutline) => {
+    setWhiteboardOutline(outline);
+    setSurface('deck');
+  }, []);
+
   // Deck → Deck Studio handoff (C-2): opens the split chat↔canvas editor seeded
   // with the just-built deck. Kept as its own callback (rather than inlining in
   // DeckSurface) so the palette can re-open the same seed later.
@@ -595,10 +609,16 @@ export function CommandFPage({
   //  - status 'running'/'queued': reuse the EXISTING §3.6 build-tail recovery
   //    (buildStatus:'building') — the same path a live build already resumes
   //    through on remount, so an in-progress job needs no new machinery here.
-  const resumeDeckToStudio = useCallback(async () => {
-    if (!resumeDeck) return;
-    const { jobId, status, approvedPlan, planTotalSlides } = resumeDeck;
-    if (status === 'complete') {
+  // Shared resolver behind both the "Resume deck" chip and the deck LIBRARY's
+  // "Open in studio" action: a `complete` job fetches the full JobStatus (deck_rev
+  // + preview_urls) via the same call the normal "Edit in studio →" hand-off uses,
+  // so the studio mounts with real thumbnails immediately; a still-`running`/
+  // `queued` job reuses the EXISTING §3.6 build-tail recovery (buildStatus:
+  // 'building') instead of new machinery.
+  const openJobInStudio = useCallback(async (
+    jobId: string, status: import('./commandf/api').JobStatus['status'], approvedPlan: Record<string, unknown> | null, planTotalSlides?: number,
+  ) => {
+    if (status === 'complete' || status === 'done') {
       try {
         const full = await generateDeckStatus(jobId);
         openDeckStudio({ jobId, seed: full, approvedPlan: approvedPlan ?? ((full.plan as Record<string, unknown>) ?? null) });
@@ -608,7 +628,33 @@ export function CommandFPage({
       return;
     }
     openDeckStudio({ jobId, seed: null, approvedPlan, buildStatus: 'building', planTotalSlides });
-  }, [resumeDeck, openDeckStudio, toast]);
+  }, [openDeckStudio, toast]);
+
+  const resumeDeckToStudio = useCallback(async () => {
+    if (!resumeDeck) return;
+    await openJobInStudio(resumeDeck.jobId, resumeDeck.status, resumeDeck.approvedPlan, resumeDeck.planTotalSlides);
+  }, [resumeDeck, openJobInStudio]);
+
+  // Deck LIBRARY → Deck Studio handoff. Drives the SAME rehydration path as
+  // "Resume deck" (openJobInStudio above) — the deliberate reuse the mission
+  // asked for, rather than a parallel open-studio mechanism. When the build
+  // carries a `session_id`, also opens that chat session first so the copilot
+  // is scoped to this deck's conversation (same as clicking it in the rail);
+  // an old build with no session_id (or one the backend can't restore) still
+  // opens the studio cleanly — the deck loads, chat just starts fresh.
+  const openBuildInStudio = useCallback(async (build: DeckBuild) => {
+    if (build.session_id) {
+      await openSession(build.session_id);
+    } else {
+      activeSessionRef.current = null;
+      setSessionId(null);
+      setResumeDeck(null);
+    }
+    await openJobInStudio(build.job_id, build.status, null, build.slide_count);
+    // `openSession` is a plain (non-memoized) async fn defined below in this
+    // component, matching the existing pattern other callbacks here follow.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openJobInStudio]);
 
   // W6.3 — deterministic follow-up chip. Shown only once the LATEST assistant
   // turn has actually finished (not streaming) and carries real sources; hides
@@ -640,7 +686,9 @@ export function CommandFPage({
     { id: 'new', label: 'New chat', group: 'Actions', icon: Plus, keywords: 'start reset thread', run: newChat },
     { id: 'knowledge', label: 'Open knowledge base', group: 'Actions', icon: Database, hint: docs ? docs.toLocaleString() : undefined, keywords: 'documents sources upload drive', run: () => setShowKnowledge(true) },
     { id: 'deck', label: 'Build a deck', group: 'Actions', icon: Presentation, hint: 'PPTX', keywords: 'presentation slides pptx', run: () => setSurface('deck') },
+    { id: 'whiteboard', label: 'Start from a whiteboard photo', group: 'Actions', icon: Camera, hint: 'Photo', keywords: 'whiteboard photo image sketch storyboard picture camera', run: () => setSurface('whiteboard') },
     { id: 'spend', label: 'View spend', group: 'Actions', icon: Coins, keywords: 'cost usage anthropic budget ledger spend', run: () => setSurface('spend') },
+    { id: 'decks', label: 'Open deck library', group: 'Actions', icon: Layers, keywords: 'decks past builds history library resume', run: () => setSurface('decks') },
     { id: 'survey', label: 'Survey compendium', group: 'Actions', icon: Table2, hint: 'XLSX', keywords: 'spreadsheet xlsx', run: () => setSurface('survey') },
     ...(deckStudioSeed
       ? [{ id: 'deckstudio', label: 'Edit in deck studio', group: 'Actions', icon: Layers, keywords: 'edit ops chat canvas', run: () => setSurface('deckstudio') } as PaletteCommand]
@@ -680,7 +728,9 @@ export function CommandFPage({
   const plusItems = [
     { label: 'Upload a file', icon: Upload, onClick: () => { setShowKnowledge(true); setShowPlus(false); } },
     { label: 'Build a deck', icon: Presentation, onClick: () => { setSurface('deck'); setShowPlus(false); } },
+    { label: 'Start from a whiteboard photo', icon: Camera, onClick: () => { setSurface('whiteboard'); setShowPlus(false); } },
     { label: 'Survey compendium', icon: Table2, onClick: () => { setSurface('survey'); setShowPlus(false); } },
+    { label: 'Deck library', icon: Layers, onClick: () => { setSurface('decks'); setShowPlus(false); } },
   ];
 
   // Injected into the composer's control row (left): the "+" creation menu and a
@@ -765,6 +815,7 @@ export function CommandFPage({
         onDeleteSession={onDeleteSession}
         onOpenKnowledge={() => setShowKnowledge(true)}
         onOpenSpend={() => setSurface('spend')}
+        onOpenDecks={() => setSurface('decks')}
         docCount={docs}
         contextLabel={contextLabel}
         logoSrc={logoSrc}
@@ -789,7 +840,15 @@ export function CommandFPage({
           </div>
         )}
         {surface === 'deck' ? (
-          <DeckSurface onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId} initialBrief={deckSeed} initialFileIds={pinnedFileIds} onOpenSurvey={() => setSurface('survey')} onOpenStudio={openDeckStudio} />
+          <DeckSurface
+            onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId}
+            initialBrief={deckSeed} initialFileIds={pinnedFileIds}
+            initialOutline={whiteboardOutline} onOutlineConsumed={() => setWhiteboardOutline(null)}
+            onOpenSurvey={() => setSurface('survey')} onOpenWhiteboard={() => setSurface('whiteboard')}
+            onOpenStudio={openDeckStudio}
+          />
+        ) : surface === 'whiteboard' ? (
+          <WhiteboardIntake onBack={() => setSurface('home')} onOutlineReady={handleWhiteboardOutline} />
         ) : surface === 'deckstudio' && deckStudioSeed ? (
           <DeckStudio
             onBack={() => setSurface('home')}
@@ -803,6 +862,8 @@ export function CommandFPage({
           />
         ) : surface === 'spend' ? (
           <SpendPanel onBack={() => setSurface('home')} />
+        ) : surface === 'decks' ? (
+          <DeckLibrary onBack={() => setSurface('home')} onOpenInStudio={openBuildInStudio} />
         ) : surface === 'survey' ? (
           <SurveySurface onBack={() => setSurface('home')} />
         ) : surface === 'chat' ? (

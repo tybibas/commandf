@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  PanelLeftClose, PanelLeft, Plus, Database, MessageSquare, Trash2, LogOut, ChevronUp, Coins,
+  PanelLeftClose, PanelLeft, Plus, Database, MessageSquare, Trash2, LogOut, ChevronUp, Coins, Layers,
 } from 'lucide-react';
 import { timeAgo } from './util';
 import type { Session } from './api';
@@ -190,6 +190,7 @@ interface SidebarProps {
   onDeleteSession: (id: string) => void;
   onOpenKnowledge: () => void;
   onOpenSpend: () => void;
+  onOpenDecks: () => void;
   docCount: number;
   contextLabel: string;
   /** Workspace logo (e.g. the Actionist wordmark) shown in the footer. */
@@ -204,7 +205,7 @@ interface SidebarProps {
 
 export default function Sidebar({
   collapsed, onToggle, onNewChat, sessions, sessionsError, onRetrySessions, activeSessionId,
-  onOpenSession, onDeleteSession, onOpenKnowledge, onOpenSpend, docCount, contextLabel, logoSrc,
+  onOpenSession, onDeleteSession, onOpenKnowledge, onOpenSpend, onOpenDecks, docCount, contextLabel, logoSrc,
   userName, userEmail, planLabel, onSignOut,
 }: SidebarProps) {
   return (
@@ -277,6 +278,20 @@ export default function Sidebar({
         >
           <Coins className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} aria-hidden />
           {!collapsed && <span className="flex-1 text-left text-body truncate">Spend</span>}
+        </button>
+      </div>
+
+      {/* ── Decks (chat-history-style deck library) ───────────────────── */}
+      <div className={`shrink-0 ${collapsed ? 'px-2' : 'px-3'} pb-1.5`}>
+        <button
+          type="button"
+          onClick={onOpenDecks}
+          title={collapsed ? 'Decks' : undefined}
+          aria-label="Open deck library"
+          className={`w-full inline-flex items-center rounded-control text-text-secondary hover:text-text-primary hover:bg-bg-tertiary transition-colors ${MOTION} ${FOCUS} ${collapsed ? 'justify-center h-9' : 'gap-2.5 px-3 h-9'}`}
+        >
+          <Layers className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} aria-hidden />
+          {!collapsed && <span className="flex-1 text-left text-body truncate">Decks</span>}
         </button>
       </div>
 
