@@ -613,6 +613,7 @@ export default function DeckStudio({
             onSlideDirty={dirtyFrom}
             onPhase={handlePhase}
             onBatchDone={handleBatchDone}
+            initialTurns={studioSession?.chat_turns}
           />
         </div>
         <div

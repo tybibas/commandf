@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Sparkles, Loader2, Check, AlertCircle, PencilLine, Plus, Trash2, RefreshCw, ArrowUpDown, Copy, Wand2,
 } from 'lucide-react';
-import { sendDeckChatStream, StreamAbortedError, type DeckOp } from './api';
+import { sendDeckChatStream, StreamAbortedError, type DeckOp, type ChatTurnRecord } from './api';
 import Composer from './Composer';
 
 let _turnSeq = 0;
@@ -104,14 +104,46 @@ function AssistantTurn({ t }: { t: Extract<ChatTurn, { role: 'assistant' }> }) {
   );
 }
 
+/** Expands the server-persisted transcript (`StudioSession.chat_turns`, one
+ *  entry per exchange) into the flat user/assistant `ChatTurn[]` this column
+ *  renders. Restored turns use the same `ChatTurn` shape a live exchange
+ *  produces (`done: true`, no `phase`) so they render identically — the
+ *  op-card list is rebuilt from the persisted envelopes (same fields
+ *  `build_iteration_record`/`build_chat_turn` already carry). */
+function expandChatTurns(records: ChatTurnRecord[]): ChatTurn[] {
+  const out: ChatTurn[] = [];
+  for (const rec of records) {
+    out.push({ id: `${rec.turn_id}-u`, role: 'user', text: rec.user_message });
+    out.push({
+      id: `${rec.turn_id}-a`,
+      role: 'assistant',
+      batchId: rec.batch_id,
+      text: rec.assistant_text,
+      ops: (rec.ops || []).map((o) => ({
+        op: {
+          op_id: o.op_id, batch_id: o.batch_id, type: o.type, target: o.target,
+          summary: o.summary, reversible: o.reversible, affects_slides: o.affects_slides,
+        },
+        status: o.status,
+        error: o.error,
+      })),
+      done: true,
+    });
+  }
+  return out;
+}
+
 /**
  * The left half of Deck Studio. A chat column that streams edit-op batches
  * (contract §3.1) as compact op cards inline with the assistant's narration.
  *
  * State ownership: `turns` (the rendered transcript) is local — it exists only
- * to render this column. The three cross-cutting signals a batch produces
- * (accumulated ops, dirty slide indices, live deck_rev) are lifted to DeckStudio
- * via the `onOp`/`onSlideDirty`/`onBatchDone` callbacks so the canvas can react
+ * to render this column, but is SEEDED once from `initialTurns` (the server-
+ * persisted transcript in the GET /studio payload, §4) so reopening a past
+ * deck build restores the prior conversation instead of starting blank. The
+ * three cross-cutting signals a batch produces (accumulated ops, dirty slide
+ * indices, live deck_rev) are lifted to DeckStudio via the
+ * `onOp`/`onSlideDirty`/`onBatchDone` callbacks so the canvas can react
  * without this component knowing about previews at all.
  *
  * Ops are kept per-turn AND flat (via `onOp`) grouped implicitly by `batch_id`
@@ -119,7 +151,7 @@ function AssistantTurn({ t }: { t: Extract<ChatTurn, { role: 'assistant' }> }) {
  * slice only renders a running list.
  */
 export default function DeckChat({
-  jobId, sending, onSendingChange, onBatchStart, onOp, onSlideDirty, onPhase, onBatchDone,
+  jobId, sending, onSendingChange, onBatchStart, onOp, onSlideDirty, onPhase, onBatchDone, initialTurns,
 }: {
   jobId: string;
   sending: boolean;
@@ -129,8 +161,22 @@ export default function DeckChat({
   onSlideDirty: (indices: number[]) => void;
   onPhase: (label: string, state: 'active' | 'done') => void;
   onBatchDone: (batchId: string, deckRev: number, slideOrder?: string[]) => void;
+  /** Persisted transcript from the GET /studio payload (§4, chat_turns). Absent
+   *  or empty → unchanged behavior (starts blank, exactly like before this
+   *  restore feature existed). Arrives asynchronously (DeckStudio fetches the
+   *  session after mount), so seeding happens in an effect below, once. */
+  initialTurns?: ChatTurnRecord[];
 }) {
   const [turns, setTurns] = useState<ChatTurn[]>([]);
+
+  // Seed once, the first time a non-empty persisted transcript arrives, and
+  // only if nothing has been rendered yet (never clobber a turn the user has
+  // already started in this session). Absent/empty initialTurns -> no-op,
+  // i.e. exactly today's behavior.
+  useEffect(() => {
+    if (!initialTurns || initialTurns.length === 0) return;
+    setTurns((prev) => (prev.length === 0 ? expandChatTurns(initialTurns) : prev));
+  }, [initialTurns]);
   const [input, setInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const ctrlRef = useRef<AbortController | null>(null);
