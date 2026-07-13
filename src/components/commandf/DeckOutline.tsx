@@ -4,6 +4,7 @@ import {
   AlertTriangle, EyeOff,
 } from 'lucide-react';
 import type { DeckOutline as Outline, OutlineSlide } from './api';
+import { fetchDeckCostEstimate, type DeckCostEstimate } from './api';
 import SlideSkeleton from './SlideSkeleton';
 
 // Whiteboard-intake only (see api.ts's OutlineSlide.confidence doc). A slide
@@ -61,6 +62,23 @@ export default function DeckOutline({
   }, [view, focusIndex]);
 
   const layoutCount = new Set(slides.map((s) => s.slide_template)).size;
+
+  // Spend-safety estimate — fetched once the slide count is known (it's known
+  // the instant the outline exists) and refreshed if the consultant deletes
+  // slides before building. Silently hidden (not an error state) while the
+  // backend route is still landing (EndpointPendingError) or on any other
+  // fetch failure — this is a nice-to-have next to the Build button, never a
+  // blocker. Never fabricates a number: a null estimate_usd (backend's
+  // "insufficient history" case) renders as "No cost history yet".
+  const [costEstimate, setCostEstimate] = useState<DeckCostEstimate | null>(null);
+  useEffect(() => {
+    if (slides.length === 0) { setCostEstimate(null); return; }
+    let cancelled = false;
+    fetchDeckCostEstimate(slides.length)
+      .then((r) => { if (!cancelled) setCostEstimate(r); })
+      .catch(() => { if (!cancelled) setCostEstimate(null); }); // EndpointPendingError + any other failure -> hide quietly
+    return () => { cancelled = true; };
+  }, [slides.length]);
 
   const move = (i: number, dir: -1 | 1) => {
     const j = i + dir;
@@ -222,7 +240,16 @@ export default function DeckOutline({
 
           {/* Build */}
           <div className="px-6 py-4 md:px-7 border-t border-border-light flex items-center justify-between gap-3">
-            <span className="text-caption text-text-muted truncate">Edit the plan, then build. One render, no re-planning.</span>
+            <div className="min-w-0">
+              <span className="text-caption text-text-muted truncate block">Edit the plan, then build. One render, no re-planning.</span>
+              {costEstimate && (
+                <span className="text-micro text-text-muted block mt-0.5">
+                  {costEstimate.estimate_usd != null
+                    ? `Estimated cost: ~$${costEstimate.estimate_usd.toFixed(2)} based on ${costEstimate.n_samples} similar build${costEstimate.n_samples === 1 ? '' : 's'}`
+                    : 'No cost history yet'}
+                </span>
+              )}
+            </div>
             <button type="button" onClick={build} disabled={building || slides.length === 0}
               className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
               {building ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
