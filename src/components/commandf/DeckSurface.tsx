@@ -7,7 +7,8 @@ const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 import {
   generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide, startDeckBuild,
-  DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError, type DeckOutline as Outline,
+  getProposalTeamRoster, DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError,
+  type DeckOutline as Outline, type Adviser,
 } from './api';
 import { writeDeckPointer } from './sessionsCache';
 import { useJob } from './useJob';
@@ -140,8 +141,17 @@ export default function DeckSurface({
   // untouched proposal request is byte-identical to before this control existed.
   const [includeCaseStudies, setIncludeCaseStudies] = useState(true);
   const [caseStudyCount, setCaseStudyCount] = useState(2);
+  const [caseStudiesDetail, setCaseStudiesDetail] = useState('');
   const [includeSeniorAdvisorPanel, setIncludeSeniorAdvisorPanel] = useState(true);
+  const [seniorAdvisors, setSeniorAdvisors] = useState<string[]>([]);
   const [includeProfessionalArrangements, setIncludeProfessionalArrangements] = useState(true);
+  const [professionalArrangementsDetail, setProfessionalArrangementsDetail] = useState('');
+  // Real firm advisers for the senior advisor panel — fetched once, lazily, the
+  // first time the surface is scoping a proposal (never fabricated client-side).
+  const [advisers, setAdvisers] = useState<Adviser[]>([]);
+  const [advisersLoading, setAdvisersLoading] = useState(false);
+  const [advisersError, setAdvisersError] = useState(false);
+  const [advisersFetched, setAdvisersFetched] = useState(false);
   const [length, setLength] = useState('');
   const [lenCustom, setLenCustom] = useState('');
   // Build mode: 'full' authors the whole deck; 'sections' authors it in chunks of
@@ -249,20 +259,55 @@ export default function DeckSurface({
     };
   };
 
+  // Lazily fetch the real adviser roster the first time this surface is
+  // scoping a proposal — never on other deliverable types, and only once
+  // (cached in state for the rest of the session).
+  useEffect(() => {
+    if (type !== 'proposal' || advisersFetched) return;
+    setAdvisersFetched(true);
+    setAdvisersLoading(true);
+    getProposalTeamRoster()
+      .then(({ advisers: list }) => {
+        setAdvisers(list);
+        setAdvisersError(list.length === 0);
+      })
+      .catch(() => setAdvisersError(true))
+      .finally(() => setAdvisersLoading(false));
+  }, [type, advisersFetched]);
+
+  const toggleAdviser = (name: string) => {
+    setSeniorAdvisors((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  };
+
   // Proposal-only scoping fields (flat, on the outline request body — not
   // nested). Backend defaults already match ours (all included, 2 case
   // studies), so a field is only sent when it DIFFERS from that default —
   // an untouched proposal request stays byte-identical to today's body.
   const proposalScopeFields = () => {
     if (!showProspectFields) return {};
-    const out: { include_case_studies?: boolean; case_study_count?: number; include_senior_advisor_panel?: boolean; include_professional_arrangements?: boolean } = {};
+    const out: {
+      include_case_studies?: boolean; case_study_count?: number; case_studies_detail?: string;
+      include_senior_advisor_panel?: boolean; senior_advisors?: string[];
+      include_professional_arrangements?: boolean; professional_arrangements_detail?: string;
+    } = {};
     if (!includeCaseStudies) {
       out.include_case_studies = false;
-    } else if (caseStudyCount !== 2) {
-      out.case_study_count = Math.min(4, Math.max(1, caseStudyCount));
+    } else {
+      if (caseStudyCount !== 2) out.case_study_count = Math.min(4, Math.max(1, caseStudyCount));
+      const detail = caseStudiesDetail.trim();
+      if (detail) out.case_studies_detail = detail;
     }
-    if (!includeSeniorAdvisorPanel) out.include_senior_advisor_panel = false;
-    if (!includeProfessionalArrangements) out.include_professional_arrangements = false;
+    if (!includeSeniorAdvisorPanel) {
+      out.include_senior_advisor_panel = false;
+    } else if (seniorAdvisors.length > 0) {
+      out.senior_advisors = seniorAdvisors;
+    }
+    if (!includeProfessionalArrangements) {
+      out.include_professional_arrangements = false;
+    } else {
+      const detail = professionalArrangementsDetail.trim();
+      if (detail) out.professional_arrangements_detail = detail;
+    }
     return out;
   };
 
@@ -522,34 +567,91 @@ export default function DeckSurface({
 
         {/* What to include (optional) — proposal-only scoping: shapes the drafted
             outline. Sent as flat include_case_studies / case_study_count /
-            include_senior_advisor_panel / include_professional_arrangements. */}
+            case_studies_detail / include_senior_advisor_panel / senior_advisors /
+            include_professional_arrangements / professional_arrangements_detail. */}
         {showProspectFields && (
           <div className="mt-5">
             <p className="text-caption text-text-muted font-medium mb-1.5">What to include (optional)</p>
             <p className="text-caption text-text-muted mb-2 leading-relaxed">
               Shapes the outline before it drafts the deck.
             </p>
-            <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => setIncludeCaseStudies((v) => !v)} aria-pressed={includeCaseStudies}
-                className={`${CHIP} ${includeCaseStudies ? CHIP_ON : CHIP_OFF}`}>
-                Case studies
-              </button>
-              {includeCaseStudies && (
-                <span className="inline-flex items-center gap-1.5 text-caption text-text-secondary">
-                  <label htmlFor="case-study-count" className="text-text-muted">count</label>
-                  <input id="case-study-count" type="number" min={1} max={4} inputMode="numeric" value={caseStudyCount}
-                    onChange={(e) => setCaseStudyCount(Math.min(4, Math.max(1, Number(e.target.value) || 1)))}
-                    className={NUM_INPUT} />
-                </span>
-              )}
-              <button type="button" onClick={() => setIncludeSeniorAdvisorPanel((v) => !v)} aria-pressed={includeSeniorAdvisorPanel}
-                className={`${CHIP} ${includeSeniorAdvisorPanel ? CHIP_ON : CHIP_OFF}`}>
-                Senior advisor panel
-              </button>
-              <button type="button" onClick={() => setIncludeProfessionalArrangements((v) => !v)} aria-pressed={includeProfessionalArrangements}
-                className={`${CHIP} ${includeProfessionalArrangements ? CHIP_ON : CHIP_OFF}`}>
-                Professional arrangements
-              </button>
+            <div className="flex flex-col gap-3">
+              {/* Case studies: on/off + count, reveals which ones when on. */}
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setIncludeCaseStudies((v) => !v)} aria-pressed={includeCaseStudies}
+                    className={`${CHIP} ${includeCaseStudies ? CHIP_ON : CHIP_OFF}`}>
+                    Case studies
+                  </button>
+                  {includeCaseStudies && (
+                    <span className="inline-flex items-center gap-1.5 text-caption text-text-secondary">
+                      <label htmlFor="case-study-count" className="text-text-muted">count</label>
+                      <input id="case-study-count" type="number" min={1} max={4} inputMode="numeric" value={caseStudyCount}
+                        onChange={(e) => setCaseStudyCount(Math.min(4, Math.max(1, Number(e.target.value) || 1)))}
+                        className={NUM_INPUT} />
+                    </span>
+                  )}
+                </div>
+                {includeCaseStudies && (
+                  <div className="mt-2">
+                    <label htmlFor="case-studies-detail" className="sr-only">Which case studies to feature</label>
+                    <input id="case-studies-detail" type="text" value={caseStudiesDetail}
+                      onChange={(e) => setCaseStudiesDetail(e.target.value)}
+                      placeholder="e.g. our insurance repositioning and PMI integration wins"
+                      className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+                  </div>
+                )}
+              </div>
+
+              {/* Senior advisor panel: on/off, reveals a multi-select of real
+                  advisers (from the roster endpoint, never invented) when on. */}
+              <div>
+                <button type="button" onClick={() => setIncludeSeniorAdvisorPanel((v) => !v)} aria-pressed={includeSeniorAdvisorPanel}
+                  className={`${CHIP} ${includeSeniorAdvisorPanel ? CHIP_ON : CHIP_OFF}`}>
+                  Senior advisor panel
+                </button>
+                {includeSeniorAdvisorPanel && (
+                  <div className="mt-2">
+                    {advisersLoading ? (
+                      <p className="text-caption text-text-muted">Loading advisers…</p>
+                    ) : advisersError || advisers.length === 0 ? (
+                      <p className="text-caption text-text-muted">Couldn&#39;t load advisers.</p>
+                    ) : (
+                      <div role="group" aria-label="Senior advisers" className="flex flex-wrap gap-1.5">
+                        {advisers.map((a) => {
+                          const selected = seniorAdvisors.includes(a.name);
+                          return (
+                            <button key={a.name} type="button" onClick={() => toggleAdviser(a.name)}
+                              aria-pressed={selected}
+                              className={`${CHIP} ${selected ? CHIP_ON : CHIP_OFF} text-left`}>
+                              {a.name}
+                              <span className={selected ? 'text-structure-ink/70' : 'text-text-muted'}> · {a.title}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Professional arrangements: on/off, reveals which ones to spell
+                  out when on. */}
+              <div>
+                <button type="button" onClick={() => setIncludeProfessionalArrangements((v) => !v)} aria-pressed={includeProfessionalArrangements}
+                  className={`${CHIP} ${includeProfessionalArrangements ? CHIP_ON : CHIP_OFF}`}>
+                  Professional arrangements
+                </button>
+                {includeProfessionalArrangements && (
+                  <div className="mt-2">
+                    <label htmlFor="professional-arrangements-detail" className="sr-only">Which arrangements to specify</label>
+                    <input id="professional-arrangements-detail" type="text" value={professionalArrangementsDetail}
+                      onChange={(e) => setProfessionalArrangementsDetail(e.target.value)}
+                      placeholder="e.g. weekly steering committee, fixed-fee structure, on-site kickoff"
+                      className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

@@ -16,6 +16,16 @@ import {
   MOCK_COST_SUMMARY,
 } from './fixtures';
 
+// Senior advisor panel roster (GET /proposal-team-roster) — a small realistic
+// set of real firm advisers so the proposal scoping multi-select renders.
+const MOCK_ADVISER_ROSTER = [
+  { name: 'David Ascher', title: 'Managing Partner' },
+  { name: 'Seth Egorin', title: 'Partner' },
+  { name: 'Felix Recht', title: 'Partner' },
+  { name: 'Abhigna Mandavilli', title: 'Associate Partner' },
+  { name: 'Jonathan Crane', title: 'Engagement Manager' },
+];
+
 // Parse a stubbed request's JSON body (deck /chat + /undo route on message/target).
 const parseBody = (init?: RequestInit): Record<string, unknown> => {
   try { return init?.body ? JSON.parse(init.body as string) : {}; } catch { return {}; }
@@ -106,6 +116,7 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       return jsonRes({ sessions: empty ? [] : MOCK_SESSIONS });
     }
     if (path.includes('/briefing')) return jsonRes(MOCK_BRIEFING);
+    if (path.includes('/proposal-team-roster')) return jsonRes({ advisers: MOCK_ADVISER_ROSTER });
     if (path.includes('/history')) return jsonRes({ history: MOCK_HISTORY });
     if (path.includes('/optimize-prompt')) {
       await new Promise((r) => setTimeout(r, 500));
