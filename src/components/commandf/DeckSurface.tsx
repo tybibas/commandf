@@ -325,20 +325,6 @@ export default function DeckSurface({
     });
   };
 
-  const buildDirect = () => {
-    if (!canGo) return;
-    // Direct build has no human-approved plan; per-slide edit becomes available
-    // once the outline echoes its plan (it is carried on the job result too).
-    // Sections mode needs an approved plan to slice — a direct build always
-    // authors the whole deck (no plan to chunk).
-    setBuiltPlan((job.result?.plan as Record<string, unknown>) ?? null);
-    job.run(() => generateDeck({
-      request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-      session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
-      ...prospectFields(),
-    }));
-  };
-
   // ── Server-side continuity: author the NEXT slice of the SAME approved plan ──
   // No re-plan — carries the stored builtPlan + the next section_start (the built-
   // through marker the last build returned). Available until the full plan is authored.
@@ -602,12 +588,8 @@ export default function DeckSurface({
           </div>
         )}
 
-        {/* Actions: outline-first, with a direct-build bypass */}
-        <div className="mt-auto pt-6 flex items-center justify-between gap-3">
-          <button type="button" onClick={buildDirect} disabled={!canGo}
-            className={`text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control disabled:opacity-40 disabled:pointer-events-none`}>
-            Skip to build
-          </button>
+        {/* Actions: every deck goes through the outline gate (approve, then build). */}
+        <div className="mt-auto pt-6 flex items-center justify-end gap-3">
           <button type="button" onClick={draftOutline} disabled={!canGo || outlinePhase === 'loading'}
             className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
             {outlinePhase === 'loading' ? <Sparkles className="w-4 h-4 animate-pulse" strokeWidth={1.75} /> : <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
