@@ -734,6 +734,14 @@ export async function generateDeckOutline(input: {
   // one the backend actually reads these from — see generateDeck below).
   prospect_company?: string;
   prospect_website?: string;
+  // Proposal scoping (flat, outline-only): shapes which sections the planner
+  // includes. All optional; omitted entirely when left at the backend's own
+  // defaults (include_* = true, case_study_count = 2) — see DeckSurface's
+  // proposalScopeFields().
+  include_case_studies?: boolean;
+  case_study_count?: number;
+  include_senior_advisor_panel?: boolean;
+  include_professional_arrangements?: boolean;
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
@@ -1073,6 +1081,9 @@ export async function streamDeckOutline(
     request: string; deliverable_type?: string; client_slug?: string; session_id?: string | null;
     file_ids?: string[]; target_slides?: number;
     prospect_company?: string; prospect_website?: string;
+    // Proposal scoping (flat, outline-only) — see generateDeckOutline above.
+    include_case_studies?: boolean; case_study_count?: number;
+    include_senior_advisor_panel?: boolean; include_professional_arrangements?: boolean;
   },
   handlers: { onPhase?: (label: string) => void },
   signal?: AbortSignal,

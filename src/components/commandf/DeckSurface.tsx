@@ -135,6 +135,13 @@ export default function DeckSurface({
   // Both optional — omitted entirely (not sent as empty strings) when blank.
   const [prospectCompany, setProspectCompany] = useState('');
   const [prospectWebsite, setProspectWebsite] = useState('');
+  // Proposal-only scoping: shape the outline before drafting. Defaults mirror
+  // today's implicit backend behavior (all included, 2 case studies) so an
+  // untouched proposal request is byte-identical to before this control existed.
+  const [includeCaseStudies, setIncludeCaseStudies] = useState(true);
+  const [caseStudyCount, setCaseStudyCount] = useState(2);
+  const [includeSeniorAdvisorPanel, setIncludeSeniorAdvisorPanel] = useState(true);
+  const [includeProfessionalArrangements, setIncludeProfessionalArrangements] = useState(true);
   const [length, setLength] = useState('');
   const [lenCustom, setLenCustom] = useState('');
   // Build mode: 'full' authors the whole deck; 'sections' authors it in chunks of
@@ -242,6 +249,23 @@ export default function DeckSurface({
     };
   };
 
+  // Proposal-only scoping fields (flat, on the outline request body — not
+  // nested). Backend defaults already match ours (all included, 2 case
+  // studies), so a field is only sent when it DIFFERS from that default —
+  // an untouched proposal request stays byte-identical to today's body.
+  const proposalScopeFields = () => {
+    if (!showProspectFields) return {};
+    const out: { include_case_studies?: boolean; case_study_count?: number; include_senior_advisor_panel?: boolean; include_professional_arrangements?: boolean } = {};
+    if (!includeCaseStudies) {
+      out.include_case_studies = false;
+    } else if (caseStudyCount !== 2) {
+      out.case_study_count = Math.min(4, Math.max(1, caseStudyCount));
+    }
+    if (!includeSeniorAdvisorPanel) out.include_senior_advisor_panel = false;
+    if (!includeProfessionalArrangements) out.include_professional_arrangements = false;
+    return out;
+  };
+
   const draftOutline = async () => {
     if (!canGo || outlinePhase === 'loading') return;
     setOutlinePhase('loading'); setOutlineError(''); setOutlineProgress('');
@@ -250,7 +274,7 @@ export default function DeckSurface({
         {
           request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
           session_id: sessionId, file_ids: fileIds, target_slides: fullCount,
-          ...prospectFields(),
+          ...prospectFields(), ...proposalScopeFields(),
         },
         { onPhase: (label) => setOutlineProgress(label) },
       );
@@ -299,20 +323,6 @@ export default function DeckSurface({
     }).finally(() => {
       setBuildStarting(false);
     });
-  };
-
-  const buildDirect = () => {
-    if (!canGo) return;
-    // Direct build has no human-approved plan; per-slide edit becomes available
-    // once the outline echoes its plan (it is carried on the job result too).
-    // Sections mode needs an approved plan to slice — a direct build always
-    // authors the whole deck (no plan to chunk).
-    setBuiltPlan((job.result?.plan as Record<string, unknown>) ?? null);
-    job.run(() => generateDeck({
-      request: buildRequest(), deliverable_type: enumType, client_slug: clientSlug,
-      session_id: sessionId, target_slides: fullCount, file_ids: fileIds,
-      ...prospectFields(),
-    }));
   };
 
   // ── Server-side continuity: author the NEXT slice of the SAME approved plan ──
@@ -510,6 +520,40 @@ export default function DeckSurface({
           </div>
         )}
 
+        {/* What to include (optional) — proposal-only scoping: shapes the drafted
+            outline. Sent as flat include_case_studies / case_study_count /
+            include_senior_advisor_panel / include_professional_arrangements. */}
+        {showProspectFields && (
+          <div className="mt-5">
+            <p className="text-caption text-text-muted font-medium mb-1.5">What to include (optional)</p>
+            <p className="text-caption text-text-muted mb-2 leading-relaxed">
+              Shapes the outline before it drafts the deck.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => setIncludeCaseStudies((v) => !v)} aria-pressed={includeCaseStudies}
+                className={`${CHIP} ${includeCaseStudies ? CHIP_ON : CHIP_OFF}`}>
+                Case studies
+              </button>
+              {includeCaseStudies && (
+                <span className="inline-flex items-center gap-1.5 text-caption text-text-secondary">
+                  <label htmlFor="case-study-count" className="text-text-muted">count</label>
+                  <input id="case-study-count" type="number" min={1} max={4} inputMode="numeric" value={caseStudyCount}
+                    onChange={(e) => setCaseStudyCount(Math.min(4, Math.max(1, Number(e.target.value) || 1)))}
+                    className={NUM_INPUT} />
+                </span>
+              )}
+              <button type="button" onClick={() => setIncludeSeniorAdvisorPanel((v) => !v)} aria-pressed={includeSeniorAdvisorPanel}
+                className={`${CHIP} ${includeSeniorAdvisorPanel ? CHIP_ON : CHIP_OFF}`}>
+                Senior advisor panel
+              </button>
+              <button type="button" onClick={() => setIncludeProfessionalArrangements((v) => !v)} aria-pressed={includeProfessionalArrangements}
+                className={`${CHIP} ${includeProfessionalArrangements ? CHIP_ON : CHIP_OFF}`}>
+                Professional arrangements
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Brief */}
         <div className="mt-5">
           <div className="flex items-center justify-between mb-1.5">
@@ -544,12 +588,8 @@ export default function DeckSurface({
           </div>
         )}
 
-        {/* Actions: outline-first, with a direct-build bypass */}
-        <div className="mt-auto pt-6 flex items-center justify-between gap-3">
-          <button type="button" onClick={buildDirect} disabled={!canGo}
-            className={`text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control disabled:opacity-40 disabled:pointer-events-none`}>
-            Skip to build
-          </button>
+        {/* Actions: every deck goes through the outline gate (approve, then build). */}
+        <div className="mt-auto pt-6 flex items-center justify-end gap-3">
           <button type="button" onClick={draftOutline} disabled={!canGo || outlinePhase === 'loading'}
             className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
             {outlinePhase === 'loading' ? <Sparkles className="w-4 h-4 animate-pulse" strokeWidth={1.75} /> : <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
