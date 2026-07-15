@@ -43,6 +43,10 @@ export type Session = { id: string; title: string; updated_at: string };
 // the picker explain what each model is scoped to (e.g. "Fast" / "Most capable").
 export type ModelOption = { id: string; name: string; description?: string; cost?: string };
 
+// Real firm advisers available to feature on a proposal's senior advisor panel
+// (`GET /proposal-team-roster`) — never fabricated client-side.
+export type Adviser = { name: string; title: string };
+
 export type KnowledgeFile = { file_name: string; chunks: number; modified: string | null };
 
 export type Briefing = {
@@ -497,6 +501,24 @@ export async function fetchModels(): Promise<ModelOption[]> {
   }
 }
 
+/** `GET /proposal-team-roster` — real firm advisers eligible for a proposal's
+ *  senior advisor panel. Never throws into the UI: a non-200 or network
+ *  failure resolves to an empty roster so the caller can show an honest
+ *  "couldn't load advisers" note rather than inventing names. */
+export async function getProposalTeamRoster(): Promise<{ advisers: Adviser[] }> {
+  const url = requireUrl();
+  try {
+    const res = await fetchWithTimeout(
+      `${url}/proposal-team-roster`, { headers: await authHeaders() }, T_FAST, 'Loading advisers',
+    );
+    if (!res.ok) return { advisers: [] };
+    const r = await res.json();
+    return { advisers: Array.isArray(r?.advisers) ? r.advisers : [] };
+  } catch {
+    return { advisers: [] };
+  }
+}
+
 /** Persistence-critical: the recent-conversations list. Returns a discriminated
  * result so the caller can distinguish a genuine empty history (ok:true, []) from
  * a load FAILURE (ok:false) — the failure must surface "couldn't load — retry",
@@ -742,6 +764,11 @@ export async function generateDeckOutline(input: {
   case_study_count?: number;
   include_senior_advisor_panel?: boolean;
   include_professional_arrangements?: boolean;
+  // What, specifically, within each included section — free text for the two
+  // narrative toggles, real adviser names for the panel. Omitted when blank.
+  case_studies_detail?: string;
+  professional_arrangements_detail?: string;
+  senior_advisors?: string[];
 }): Promise<DeckOutline> {
   const url = requireUrl();
   const token = await bearer();
@@ -1084,6 +1111,8 @@ export async function streamDeckOutline(
     // Proposal scoping (flat, outline-only) — see generateDeckOutline above.
     include_case_studies?: boolean; case_study_count?: number;
     include_senior_advisor_panel?: boolean; include_professional_arrangements?: boolean;
+    case_studies_detail?: string; professional_arrangements_detail?: string;
+    senior_advisors?: string[];
   },
   handlers: { onPhase?: (label: string) => void },
   signal?: AbortSignal,
