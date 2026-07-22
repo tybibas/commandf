@@ -13,7 +13,7 @@ import {
   MOCK_OUTLINE, MOCK_DECK_STATUS, MOCK_UPLOAD_STATUS,
   MOCK_STUDIO_SESSION, MOCK_DECK_EDIT_STREAM, MOCK_DECK_EDIT_STREAM_FAIL,
   MOCK_DECK_UNDO_STREAM, MOCK_DECK_UNDO_DEP_ERROR, mockSlidePreview,
-  MOCK_COST_SUMMARY,
+  MOCK_COST_SUMMARY, MOCK_CASE_STUDY_CANDIDATES,
 } from './fixtures';
 
 // Senior advisor panel roster (GET /proposal-team-roster) — a small realistic
@@ -117,6 +117,14 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     }
     if (path.includes('/briefing')) return jsonRes(MOCK_BRIEFING);
     if (path.includes('/proposal-team-roster')) return jsonRes({ advisers: MOCK_ADVISER_ROSTER });
+    // Case-study candidate search (POST /proposal-case-study-candidates).
+    // ?casestudies=empty simulates a brief with no matching indexed engagements,
+    // for verifying the "couldn't find matches" honest-empty state.
+    if (path.includes('/proposal-case-study-candidates')) {
+      const empty = new URLSearchParams(window.location.search).get('casestudies') === 'empty';
+      await new Promise((r) => setTimeout(r, 450)); // let the "Searching…" state show
+      return jsonRes({ candidates: empty ? [] : MOCK_CASE_STUDY_CANDIDATES });
+    }
     if (path.includes('/history')) return jsonRes({ history: MOCK_HISTORY });
     if (path.includes('/optimize-prompt')) {
       await new Promise((r) => setTimeout(r, 500));

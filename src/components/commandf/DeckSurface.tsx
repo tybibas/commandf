@@ -1,14 +1,14 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import {
-  Presentation, Sparkles, ArrowLeft, ArrowUpRight, Database, Layers, FileText, Info,
+  Presentation, Sparkles, ArrowLeft, ArrowUpRight, Database, Layers, FileText, Info, Check,
 } from 'lucide-react';
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 import {
   generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide, startDeckBuild,
-  getProposalTeamRoster, DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError,
-  type DeckOutline as Outline, type Adviser,
+  getProposalTeamRoster, getCaseStudyCandidates, DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError,
+  type DeckOutline as Outline, type Adviser, type CaseStudyCandidate,
 } from './api';
 import { writeDeckPointer } from './sessionsCache';
 import { useJob } from './useJob';
@@ -142,6 +142,15 @@ export default function DeckSurface({
   const [includeCaseStudies, setIncludeCaseStudies] = useState(true);
   const [caseStudyCount, setCaseStudyCount] = useState(2);
   const [caseStudiesDetail, setCaseStudiesDetail] = useState('');
+  // Real, indexed engagements matched against the request text — fetched
+  // on demand (the button below), never on type-switch, since the match
+  // depends on what the operator has actually written. Accepted refs ride
+  // the outline request as `selected_case_studies`; never invented client-side.
+  const [caseStudyCandidates, setCaseStudyCandidates] = useState<CaseStudyCandidate[]>([]);
+  const [caseStudiesLoading, setCaseStudiesLoading] = useState(false);
+  const [caseStudiesSearchError, setCaseStudiesSearchError] = useState(false);
+  const [caseStudiesSearched, setCaseStudiesSearched] = useState(false);
+  const [acceptedCaseStudies, setAcceptedCaseStudies] = useState<string[]>([]);
   const [includeSeniorAdvisorPanel, setIncludeSeniorAdvisorPanel] = useState(true);
   const [seniorAdvisors, setSeniorAdvisors] = useState<string[]>([]);
   const [includeProfessionalArrangements, setIncludeProfessionalArrangements] = useState(true);
@@ -279,6 +288,26 @@ export default function DeckSurface({
     setSeniorAdvisors((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
   };
 
+  // On-demand search: candidates depend on the request text, so this is a
+  // button (not a lazy on-mount fetch like the adviser roster). Re-running it
+  // replaces the candidate list but keeps prior accept/reject choices for
+  // refs still present.
+  const findCaseStudies = () => {
+    if (caseStudiesLoading || !brief.trim()) return;
+    setCaseStudiesLoading(true); setCaseStudiesSearchError(false); setCaseStudiesSearched(true);
+    getCaseStudyCandidates(buildRequest(), undefined, undefined, 6)
+      .then(({ candidates }) => {
+        setCaseStudyCandidates(candidates);
+        setCaseStudiesSearchError(candidates.length === 0);
+      })
+      .catch(() => setCaseStudiesSearchError(true))
+      .finally(() => setCaseStudiesLoading(false));
+  };
+
+  const toggleCaseStudy = (deckRef: string) => {
+    setAcceptedCaseStudies((prev) => (prev.includes(deckRef) ? prev.filter((r) => r !== deckRef) : [...prev, deckRef]));
+  };
+
   // Proposal-only scoping fields (flat, on the outline request body — not
   // nested). Backend defaults already match ours (all included, 2 case
   // studies), so a field is only sent when it DIFFERS from that default —
@@ -287,6 +316,7 @@ export default function DeckSurface({
     if (!showProspectFields) return {};
     const out: {
       include_case_studies?: boolean; case_study_count?: number; case_studies_detail?: string;
+      selected_case_studies?: string[];
       include_senior_advisor_panel?: boolean; senior_advisors?: string[];
       include_professional_arrangements?: boolean; professional_arrangements_detail?: string;
     } = {};
@@ -296,6 +326,9 @@ export default function DeckSurface({
       if (caseStudyCount !== 2) out.case_study_count = Math.min(4, Math.max(1, caseStudyCount));
       const detail = caseStudiesDetail.trim();
       if (detail) out.case_studies_detail = detail;
+      // Omitted entirely when the operator hasn't accepted any — an untouched
+      // request stays byte-identical to before this picker existed.
+      if (acceptedCaseStudies.length > 0) out.selected_case_studies = acceptedCaseStudies;
     }
     if (!includeSeniorAdvisorPanel) {
       out.include_senior_advisor_panel = false;
@@ -599,6 +632,65 @@ export default function DeckSurface({
                       onChange={(e) => setCaseStudiesDetail(e.target.value)}
                       placeholder="e.g. our insurance repositioning and PMI integration wins"
                       className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+                  </div>
+                )}
+
+                {/* Case-study picker: search real indexed engagements matched
+                    against the brief, then accept/reject onto the outline.
+                    On-demand (the match depends on request text, unlike the
+                    static adviser roster) — never invented client-side. */}
+                {includeCaseStudies && (
+                  <div className="mt-2">
+                    <button type="button" onClick={findCaseStudies} disabled={!brief.trim() || caseStudiesLoading}
+                      className={`${CHIP} ${CHIP_OFF} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                      {caseStudiesLoading ? 'Searching…' : caseStudiesSearched ? 'Search again' : 'Find relevant case studies'}
+                    </button>
+
+                    {caseStudiesSearched && !caseStudiesLoading && (
+                      caseStudiesSearchError || caseStudyCandidates.length === 0 ? (
+                        <p className="mt-2 text-caption text-text-muted">
+                          Couldn&#39;t find matching case studies for this brief.
+                        </p>
+                      ) : (
+                        <div role="group" aria-label="Case study candidates" className="mt-2 flex flex-col gap-1.5">
+                          {caseStudyCandidates.map((c) => {
+                            const accepted = acceptedCaseStudies.includes(c.deck_ref);
+                            return (
+                              <button key={c.deck_ref} type="button" onClick={() => toggleCaseStudy(c.deck_ref)}
+                                aria-pressed={accepted}
+                                className={`flex items-start gap-2.5 rounded-control border px-3 py-2 text-left transition-colors ${MOTION} ${FOCUS} ${
+                                  accepted
+                                    ? 'border-success bg-success-soft'
+                                    : 'border-border-light hover:border-border-hover hover:bg-bg-secondary'
+                                }`}>
+                                <span
+                                  aria-hidden="true"
+                                  className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                    accepted ? 'border-success bg-success text-bg-elevated' : 'border-border-hover'
+                                  }`}
+                                >
+                                  {accepted && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex items-baseline justify-between gap-2">
+                                    <span className="text-body-sm font-medium text-text-primary truncate">{c.title}</span>
+                                    <span className="shrink-0 text-micro font-mono text-text-muted tabular-nums">
+                                      {Math.round(c.similarity * 100)}% match
+                                    </span>
+                                  </span>
+                                  <span className="mt-0.5 block text-caption text-text-secondary leading-relaxed line-clamp-2">
+                                    {c.snippet}
+                                  </span>
+                                  <span className="mt-1 block text-caption text-text-muted italic leading-relaxed">
+                                    {c.why_matched}
+                                  </span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )
+                    )}
                   </div>
                 )}
               </div>

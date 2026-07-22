@@ -47,6 +47,17 @@ export type ModelOption = { id: string; name: string; description?: string; cost
 // (`GET /proposal-team-roster`) — never fabricated client-side.
 export type Adviser = { name: string; title: string };
 
+// A real, indexed engagement the semantic search matched against a proposal's
+// request text (`POST /proposal-case-study-candidates`) — never fabricated:
+// deck_ref is a real Drive link, title/snippet are pulled from the actual deck.
+export type CaseStudyCandidate = {
+  deck_ref: string;
+  title: string;
+  snippet: string;
+  similarity: number;
+  why_matched: string;
+};
+
 export type KnowledgeFile = { file_name: string; chunks: number; modified: string | null };
 
 export type Briefing = {
@@ -516,6 +527,30 @@ export async function getProposalTeamRoster(): Promise<{ advisers: Adviser[] }> 
     return { advisers: Array.isArray(r?.advisers) ? r.advisers : [] };
   } catch {
     return { advisers: [] };
+  }
+}
+
+/** `POST /proposal-case-study-candidates` — real, indexed engagements the
+ *  semantic search matched against the in-progress proposal's request text,
+ *  for the operator to accept/reject onto the outline. Fail-soft like the
+ *  roster call above: a non-200 or network failure resolves to an empty list
+ *  so the caller can show an honest "couldn't find matches" note rather than
+ *  inventing case studies. */
+export async function getCaseStudyCandidates(
+  request: string, sector?: string, service_line?: string, k?: number,
+): Promise<{ candidates: CaseStudyCandidate[] }> {
+  const url = requireUrl();
+  try {
+    const res = await fetchWithTimeout(
+      `${url}/proposal-case-study-candidates`,
+      { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ request, sector, service_line, k }) },
+      T_MUTATE, 'Finding case studies',
+    );
+    if (!res.ok) return { candidates: [] };
+    const r = await res.json();
+    return { candidates: Array.isArray(r?.candidates) ? r.candidates : [] };
+  } catch {
+    return { candidates: [] };
   }
 }
 

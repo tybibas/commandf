@@ -5,7 +5,7 @@
 
 import type {
   Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline,
-  StudioSession, DeckStreamEvent, CostSummary,
+  StudioSession, DeckStreamEvent, CostSummary, CaseStudyCandidate,
 } from '../components/commandf/api';
 
 const now = 1750000000000; // fixed epoch (no Date.now in fixtures → deterministic)
@@ -330,3 +330,30 @@ export const MOCK_COST_SUMMARY: CostSummary = {
     { date: '2026-07-06', usd: 0.2575, anthropic_usd: 0.2575 },
   ],
 };
+
+// Case-study candidates (POST /proposal-case-study-candidates) — real, indexed
+// engagements the semantic search would match against a proposal request, so
+// the accept/reject picker in DeckSurface has something real to render.
+export const MOCK_CASE_STUDY_CANDIDATES: CaseStudyCandidate[] = [
+  {
+    deck_ref: 'https://drive.google.com/file/d/1a2b3c4d5e6f7g8h9i0j/view',
+    title: 'Meridian Mutual — commercial diligence on a specialty-insurance target',
+    snippet: 'Ten-week workstream assessing underwriting discipline and reserve adequacy ahead of a bolt-on acquisition, closing with a go/no-go recommendation to the investment committee.',
+    similarity: 0.87,
+    why_matched: 'Same specialty-insurance diligence scope and target-size range as this brief.',
+  },
+  {
+    deck_ref: 'https://drive.google.com/file/d/2b3c4d5e6f7g8h9i0j1k/view',
+    title: 'Harbor Point — cost-to-serve teardown for a distribution business',
+    snippet: 'Mapped fulfillment cost by channel and customer tier, identifying a recoverable margin pool the client used to reprice its smallest accounts.',
+    similarity: 0.74,
+    why_matched: 'Distribution-sector cost-to-serve work with a similar margin thesis.',
+  },
+  {
+    deck_ref: 'https://drive.google.com/file/d/3c4d5e6f7g8h9i0j1k2l/view',
+    title: 'Cross River Holdings — post-merger integration PMO',
+    snippet: 'Stood up a 100-day integration plan across finance, ops, and go-to-market for a mid-market roll-up, with a steering rhythm that carried past close.',
+    similarity: 0.61,
+    why_matched: 'PMO stand-up pattern relevant if this proposal scopes an integration phase.',
+  },
+];
