@@ -14,6 +14,12 @@ const MOCK_USER_NAME = 'Ty Bibas';
 const MOCK_USER_EMAIL = 'ty@actionistconsulting.com';
 
 export function HarnessRoot({ view }: { view: string }) {
+  // ?analogous=empty (deckstudio view only): seed the directly-mounted studio
+  // with an empty analogous_proposals array, verifying the reference-trail
+  // panel renders nothing rather than an empty box.
+  const emptyAnalogous = new URLSearchParams(window.location.search).get('analogous') === 'empty';
+  const deckStudioSeed = emptyAnalogous ? { ...MOCK_DECK_STATUS, analogous_proposals: [] } : MOCK_DECK_STATUS;
+
   if (view === 'login') {
     return <AuthProvider><CommandFLogin /></AuthProvider>;
   }
@@ -32,7 +38,7 @@ export function HarnessRoot({ view }: { view: string }) {
               onBack={() => console.info('[harness] back')}
               jobId="mock-deck-job"
               approvedPlan={MOCK_OUTLINE.plan}
-              seed={MOCK_DECK_STATUS}
+              seed={deckStudioSeed}
             />
           </div>
         </ActionistStrategyProvider>

@@ -5,7 +5,7 @@
 
 import type {
   Briefing, Session, ModelOption, Source, ChatResponse, DeckOutline,
-  StudioSession, DeckStreamEvent, CostSummary, CaseStudyCandidate,
+  StudioSession, DeckStreamEvent, CostSummary, CaseStudyCandidate, AnalogousProposal,
 } from '../components/commandf/api';
 
 const now = 1750000000000; // fixed epoch (no Date.now in fixtures → deterministic)
@@ -135,6 +135,24 @@ export function mockSlidePreview(index: number, rev: number): string {
 export const MOCK_SLIDE_IDS = ['s_ov01', 's_st02', 's_sc03', 's_rk04', 's_ns05'];
 const MOCK_DECK_PREVIEWS = MOCK_SLIDE_IDS.map((_, i) => mockSlidePreview(i, 1));
 
+// The reference trail behind a built deck's scope section (JobStatus.analogous_proposals)
+// — real past Actionist proposals the backend's semantic search matched against
+// the generated scope-of-activities language. Mirrors MOCK_CASE_STUDY_CANDIDATES'
+// deck_ref/title/why_matched shape (same underlying corpus), minus similarity/snippet
+// (the build-result field only carries the three the backend actually sends).
+export const MOCK_ANALOGOUS_PROPOSALS: AnalogousProposal[] = [
+  {
+    deck_ref: 'https://drive.google.com/file/d/1a2b3c4d5e6f7g8h9i0j/view',
+    title: 'Meridian Mutual — commercial diligence on a specialty-insurance target',
+    why_matched: 'Same specialty-insurance diligence scope and target-size range as this brief.',
+  },
+  {
+    deck_ref: 'https://drive.google.com/file/d/2b3c4d5e6f7g8h9i0j1k/view',
+    title: 'Harbor Point — cost-to-serve teardown for a distribution business',
+    why_matched: 'Distribution-sector cost-to-serve work with a similar margin thesis.',
+  },
+];
+
 export const MOCK_DECK_STATUS = {
   status: 'complete' as const,
   slide_count: 5,
@@ -143,6 +161,7 @@ export const MOCK_DECK_STATUS = {
   preview_urls: MOCK_DECK_PREVIEWS,
   deck_rev: 1,
   placeholders: ['[PLACEHOLDER: confirm Q3 loss-ratio figure with the deal team]'],
+  analogous_proposals: MOCK_ANALOGOUS_PROPOSALS,
 };
 
 // Studio session (§4) — build-format options + category-grounding provenance.

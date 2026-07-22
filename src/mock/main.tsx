@@ -179,7 +179,13 @@ window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       await new Promise((r) => setTimeout(r, 600)); // let the "Drafting outline…" state show
       return jsonRes(MOCK_OUTLINE);
     }
-    if (path.includes('/generate-deck') && path.includes('/status')) return jsonRes(MOCK_DECK_STATUS);
+    // ?analogous=empty simulates a build whose scope drew on no analogous past
+    // proposals, for verifying the panel renders nothing (never a fabricated
+    // entry, never an empty box) rather than skipping the state entirely.
+    if (path.includes('/generate-deck') && path.includes('/status')) {
+      const emptyAnalogous = new URLSearchParams(window.location.search).get('analogous') === 'empty';
+      return jsonRes(emptyAnalogous ? { ...MOCK_DECK_STATUS, analogous_proposals: [] } : MOCK_DECK_STATUS);
+    }
     if (path.includes('/generate-deck')) return jsonRes({ job_id: 'mock-deck-job', status: 'queued' }, 202);
     // Survey compendium: job → status (reuses the deck status shape + sheet_count).
     if (path.includes('/survey-compendium') && path.includes('/status')) return jsonRes({ ...MOCK_DECK_STATUS, sheet_count: 8, title: 'Survey Compendium' });

@@ -13,6 +13,7 @@ import DeckChat from './DeckChat';
 import DeckCanvas from './DeckCanvas';
 import DeckChangelog, { type ChangelogBatch } from './DeckChangelog';
 import DeckGroundingBar from './DeckGroundingBar';
+import AnalogousProposalsPanel from './AnalogousProposalsPanel';
 import { BuildNarrationColumn, BuildCanvas, type BuildSlot } from './DeckBuildView';
 
 // Resume cursors survive a DeckStudio remount (surface nav away/back, a
@@ -631,6 +632,7 @@ export default function DeckStudio({
             changelogOpen={showChangelog}
             onToggleChangelog={() => setShowChangelog(true)}
           />
+          <AnalogousProposalsPanel proposals={seed?.analogous_proposals} />
           <DeckCanvas
             jobId={jobId}
             deckRev={deckRev}

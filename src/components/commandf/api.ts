@@ -58,6 +58,16 @@ export type CaseStudyCandidate = {
   why_matched: string;
 };
 
+// A real past Actionist proposal whose scope-of-activities language grounded a
+// generated deck's scope section (attached to a build job's result — see
+// JobStatus.analogous_proposals). Never fabricated client-side: deck_ref is a
+// real Drive link/ref, title/why_matched are real strings from the backend.
+export type AnalogousProposal = {
+  deck_ref: string;
+  title: string;
+  why_matched: string;
+};
+
 export type KnowledgeFile = { file_name: string; chunks: number; modified: string | null };
 
 export type Briefing = {
@@ -129,6 +139,12 @@ export type JobStatus = {
   built_through?: number;       // next unbuilt slide index (0-based) of the full plan
   plan_total_slides?: number;   // total content slides in the approved full plan
   error?: string;
+  // The reference trail behind a generated scope section: real past proposals
+  // whose scope-of-activities language grounded this build. Absent on older
+  // jobs (pre-dates the field) or an empty array when none surfaced — both
+  // render nothing but a quiet note, never a fabricated entry (modal_commandf.py
+  // generate_deck_job attaches this to the job result).
+  analogous_proposals?: AnalogousProposal[];
 };
 
 // Deck outline (Stage-1 plan) — returned SYNCHRONOUSLY by /generate-deck/outline.
