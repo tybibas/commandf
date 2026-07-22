@@ -24,58 +24,20 @@ const CHIP_OFF = 'border border-border-light text-text-secondary hover:text-text
 const CHIP_ON = 'bg-structure text-structure-ink';
 const NUM_INPUT = `w-16 rounded-control border border-border bg-bg-secondary px-2 py-1 text-caption font-mono text-text-primary text-center outline-none focus:border-border-hover transition-colors ${MOTION} ${FOCUS}`;
 
-// Deliverable types + their natural briefs. Three (proposal, engagement_recap,
-// pov_memo) are the generator's validated enum → sent as `deliverable_type`.
-// The rest are grounded in Actionist's indexed work but NOT enum values, so their
-// intent is folded into the request prose (`intent`) — the planner is LLM-driven
-// and adapts. Each type carries a few archetypal briefs (no named clients) that
-// teach what it can produce; the left panel rotates through them per selected type.
+// Command F's deck flow is proposal-only (operator product pivot). The other
+// deliverable types (engagement_recap, pov_memo, board_update, diagnostic,
+// strategy, market_landscape, due_diligence) are kept out of DeckType/TYPES
+// entirely rather than trimmed in-array-but-hidden, since only `proposal`'s
+// examples ever feed the UI now; their enum values and any other deck-type
+// plumbing they touched (DECK_ENUM_TYPES, etc.) are untouched elsewhere for
+// reversibility. Each type carries a few archetypal briefs (no named clients)
+// that teach what it can produce; the left panel rotates through them.
 type DeckType = { id: string; label: string; examples: string[]; intent?: string };
 const TYPES: DeckType[] = [
-  { id: '', label: 'Auto-detect', examples: [
-    'A 90-day operating-model review for a mid-market insurer CFO. Lead with the value-creation thesis, then the workplan and the team.',
-    'A working session for the client ops leads on why cycle times slipped last quarter, and the two changes we would make first.',
-    'A short update for a PE deal team on where our work stands and what still worries us.',
-  ] },
   { id: 'proposal', label: 'Proposal', examples: [
     'A proposal for a 10-week commercial diligence on a specialty-insurance target: our approach, the workplan, the team, and fees.',
     'A pitch to run a cost-to-serve teardown for a distribution business, framed around the margin we think is recoverable.',
     'A proposal to stand up a PMO for a post-merger integration, with the first 100 days mapped out.',
-  ] },
-  { id: 'engagement_recap', label: 'Engagement recap', examples: [
-    'A closing readout for the engagement: what we set out to do, what changed along the way, the results, and the handoff plan.',
-    'A recap for the sponsor showing the three decisions that moved the number, and what we would watch over the next two quarters.',
-    'A wrap-up for the client team that credits their people, names what worked, and is honest about what we would do differently.',
-  ] },
-  { id: 'pov_memo', label: 'POV memo', examples: [
-    'A point-of-view memo on where the specialty-insurance market is heading, and what it means for a mid-market carrier over the next 24 months.',
-    'A short memo arguing the client is under-pricing risk in one segment, with the evidence and the fix.',
-    'A partner take on whether to build or buy the analytics capability, and why we lean one way.',
-  ] },
-  { id: 'board_update', label: 'Board / SteerCo', intent: 'a board / SteerCo update deck', examples: [
-    'A Q3 SteerCo update: progress against the value-creation plan, the two decisions we need from the board, and the risks we are tracking.',
-    'A board update that opens with the one number that matters this quarter, then the story behind it.',
-    'A SteerCo pack that flags a slipped milestone early, with the recovery plan and what it costs.',
-  ] },
-  { id: 'diagnostic', label: 'Diagnostic', intent: 'a diagnostic deck', examples: [
-    'An operating-model diagnostic for a mid-market insurer: where margin leaks today, the root causes, and the three highest-impact fixes.',
-    'A diagnostic of why win rates fell in one region, tracing it back to pricing and rep coverage.',
-    'A cost diagnostic that separates the spend we can cut this year from the spend that needs a longer fix.',
-  ] },
-  { id: 'strategy', label: 'Strategy', intent: 'a strategy deck', examples: [
-    'Strategic options for a distribution business facing channel shift: three paths, the trade-offs of each, and our recommendation.',
-    'A growth strategy for a carrier that has run out of room in its home market, ranked by how fast each move pays back.',
-    'A five-year plan that starts from where the client actually wins today, not a blank sheet.',
-  ] },
-  { id: 'market_landscape', label: 'Market landscape', intent: 'a market-landscape deck', examples: [
-    'A market landscape for the E&S insurance segment: size and growth, the competitive map, and where the white space is for a new entrant.',
-    'A landscape of the players in embedded insurance, sorted by who is actually taking share.',
-    'A scan of an adjacent market the client is eyeing, with an honest read on whether it is worth entering.',
-  ] },
-  { id: 'due_diligence', label: 'Due diligence', intent: 'a commercial due-diligence readout', examples: [
-    'A commercial due-diligence readout on a specialty-insurance target: market attractiveness, competitive position, and the key risks to the thesis.',
-    'A diligence readout that stress-tests the seller growth story against what customers told us.',
-    'A red-flag summary for a deal team: the three things that could break the thesis, and how confident we are in each.',
   ] },
 ];
 
@@ -98,7 +60,7 @@ type OutlinePhase = 'idle' | 'loading' | 'error' | 'pending';
 
 export default function DeckSurface({
   onBack, clientSlug, sessionId, initialBrief, initialFileIds, initialOutline, onOutlineConsumed,
-  onOpenSurvey, onOpenWhiteboard, onOpenStudio,
+  onOpenWhiteboard, onOpenStudio,
 }: {
   onBack: () => void;
   clientSlug?: string;
@@ -118,7 +80,6 @@ export default function DeckSurface({
   // are read only at mount) so navigating back to this surface later doesn't
   // silently reopen a stale photo's outline.
   onOutlineConsumed?: () => void;
-  onOpenSurvey?: () => void;
   onOpenWhiteboard?: () => void;
   // Deck Studio (C-2) handoff. `seed`+`buildStatus` omitted (undefined/null) means
   // "open against an in-flight build" (§3.6) — the default approved-plan flow now
@@ -129,7 +90,10 @@ export default function DeckSurface({
     buildStatus?: 'building'; planTotalSlides?: number;
   }) => void;
 }) {
-  const [type, setType] = useState('');
+  // The deck flow is proposal-only now; kept as state (not a literal) since
+  // buildRequest/enumType/showProspectFields still read it and a future
+  // deliverable type would only need to change this default.
+  const [type] = useState('proposal');
   const [brief, setBrief] = useState(initialBrief ?? '');
   // Proposal-only cover data: the backend uses these to render "Prepared for
   // {company}" on the cover slide and to scrape the prospect's site for a logo.
@@ -501,33 +465,16 @@ export default function DeckSurface({
         examples={activeType.examples} idx={exampleIdx} onPick={setExampleIdx} onUse={useExample} />
     }>
       <div className="flex flex-col px-6 pt-3 pb-6 md:px-7 md:pb-7">
-        {/* Deliverable type */}
-        <p className="text-caption text-text-muted font-medium mb-2.5">Deliverable type</p>
-        <div className="flex flex-wrap gap-1.5">
-          {TYPES.map((t) => (
-            <button key={t.id} type="button" onClick={() => setType(t.id)} aria-pressed={type === t.id}
-              className={`${CHIP} ${type === t.id ? CHIP_ON : CHIP_OFF}`}>
-              {t.label}
-            </button>
-          ))}
-        </div>
-        {onOpenSurvey && (
-          <button type="button" onClick={onOpenSurvey}
-            className={`mt-2 inline-flex items-center gap-1 text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control`}>
-            Building a survey compendium? Open that tool
-            <ArrowUpRight className="w-3 h-3" strokeWidth={2} aria-hidden />
-          </button>
-        )}
         {onOpenWhiteboard && (
           <button type="button" onClick={onOpenWhiteboard}
-            className={`mt-2 inline-flex items-center gap-1 text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control`}>
+            className={`inline-flex items-center gap-1 self-start text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control`}>
             Have a whiteboard photo instead? Start from that
             <ArrowUpRight className="w-3 h-3" strokeWidth={2} aria-hidden />
           </button>
         )}
 
         {/* Length */}
-        <div className="mt-6 flex items-center gap-2 flex-wrap">
+        <div className={`${onOpenWhiteboard ? 'mt-6' : ''} flex items-center gap-2 flex-wrap`}>
           <span className="text-caption text-text-muted font-medium mr-1">Target length</span>
           {LENGTHS.map((l) => (
             <button key={l.id} type="button" onClick={() => { setLength(l.id); setLenCustom(''); }} aria-pressed={length === l.id}
@@ -748,13 +695,20 @@ export default function DeckSurface({
           </div>
         )}
 
-        {/* Brief */}
+        {/* Discovery-call notes: the primary input. A proposal starts from what
+            the client actually said on the first call, so this field is framed
+            as that source of truth rather than a generic brief. Same state
+            variable and buildRequest() plumbing as before — labeling/framing
+            only, no new field, no new request param. */}
         <div className="mt-5">
           <div className="flex items-center justify-between mb-1.5">
-            <label htmlFor="deck-brief" className="text-caption text-text-muted font-medium">Brief</label>
+            <label htmlFor="deck-brief" className="text-caption text-text-muted font-medium">Discovery-call notes</label>
           </div>
-          <p className="text-caption text-text-muted mb-2 leading-relaxed">Name the audience, the angle, and which past work to draw on.</p>
-          <textarea id="deck-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} placeholder="Build a [deck type] for [client] covering [topic and key questions]…"
+          <p className="text-caption text-text-muted mb-2 leading-relaxed">
+            Paste what the client told you: their business, the problem they described, and what
+            they want out of this. Name the audience and which past work to draw on if it matters.
+          </p>
+          <textarea id="deck-brief" value={brief} onChange={(e) => setBrief(e.target.value)} rows={6} placeholder="What the client said on the call: their business, the problem, what they want, who this proposal is for…"
             className={`w-full resize-y max-h-[40vh] rounded-surface border border-border bg-bg-secondary px-3.5 py-3 text-body-sm text-text-primary placeholder:text-text-muted leading-relaxed outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
           {/* Same voice + optimize controls as the main composer (reused). */}
           <div className="mt-2 flex justify-end">

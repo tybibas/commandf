@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Plus, Database, Upload, Presentation, Table2, MessageSquare, Wand2, Loader2,
+  Plus, Database, Upload, Presentation, MessageSquare, Wand2, Loader2,
   Search, GitCompare, Quote, Layers, Coins, Camera,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
@@ -689,7 +689,6 @@ export function CommandFPage({
     { id: 'whiteboard', label: 'Start from a whiteboard photo', group: 'Actions', icon: Camera, hint: 'Photo', keywords: 'whiteboard photo image sketch storyboard picture camera', run: () => setSurface('whiteboard') },
     { id: 'spend', label: 'View spend', group: 'Actions', icon: Coins, keywords: 'cost usage anthropic budget ledger spend', run: () => setSurface('spend') },
     { id: 'decks', label: 'Open deck library', group: 'Actions', icon: Layers, keywords: 'decks past builds history library resume', run: () => setSurface('decks') },
-    { id: 'survey', label: 'Survey compendium', group: 'Actions', icon: Table2, hint: 'XLSX', keywords: 'spreadsheet xlsx', run: () => setSurface('survey') },
     ...(deckStudioSeed
       ? [{ id: 'deckstudio', label: 'Edit in deck studio', group: 'Actions', icon: Layers, keywords: 'edit ops chat canvas', run: () => setSurface('deckstudio') } as PaletteCommand]
       : []),
@@ -729,7 +728,6 @@ export function CommandFPage({
     { label: 'Upload a file', icon: Upload, onClick: () => { setShowKnowledge(true); setShowPlus(false); } },
     { label: 'Build a deck', icon: Presentation, onClick: () => { setSurface('deck'); setShowPlus(false); } },
     { label: 'Start from a whiteboard photo', icon: Camera, onClick: () => { setSurface('whiteboard'); setShowPlus(false); } },
-    { label: 'Survey compendium', icon: Table2, onClick: () => { setSurface('survey'); setShowPlus(false); } },
     { label: 'Deck library', icon: Layers, onClick: () => { setSurface('decks'); setShowPlus(false); } },
   ];
 
@@ -844,7 +842,7 @@ export function CommandFPage({
             onBack={() => setSurface('home')} clientSlug={activeContext} sessionId={sessionId}
             initialBrief={deckSeed} initialFileIds={pinnedFileIds}
             initialOutline={whiteboardOutline} onOutlineConsumed={() => setWhiteboardOutline(null)}
-            onOpenSurvey={() => setSurface('survey')} onOpenWhiteboard={() => setSurface('whiteboard')}
+            onOpenWhiteboard={() => setSurface('whiteboard')}
             onOpenStudio={openDeckStudio}
           />
         ) : surface === 'whiteboard' ? (
