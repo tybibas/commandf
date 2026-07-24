@@ -1566,3 +1566,102 @@ export async function whiteboardIntake(file: File, requestHint?: string, signal?
   }
   return json<DeckOutline>(res);
 }
+
+// ── Call-notes intake — raw notes → span-verified fields, no RAG retrieval ──
+// Backend: POST /proposal-extract-fields + POST /proposal-slide-selections
+// (Modal v82, auth-enforced, never-500). Two independent, synchronous calls —
+// no job/poll. Response shapes below are the REAL wire contract confirmed
+// against the deployed handler (modal_commandf.py) via a live E2E run — every
+// field optional/nullable (the backend only ever emits what it could verify
+// against a span in the pasted notes) and the UI renders defensively: a
+// missing/empty field is shown as "—", never invented. `unverified` is the
+// span-gate's own flat list of rejected/dropped item descriptions.
+
+export type ExtractedContact = {
+  name?: string;
+  title?: string;
+};
+
+/** The verified-fields payload nested under `fields` in the extract response. */
+export type ExtractedFieldsData = {
+  client_name?: string;
+  deal_size?: string;
+  timeline?: string;
+  financing_need?: string;
+  industry?: string;
+  segments?: string[];
+  company_facts?: string[];
+  service_needs?: string[];
+  client_contacts?: ExtractedContact[];
+};
+
+/** Response shape for POST /proposal-extract-fields. On empty/no-notes or any
+ *  internal error the backend returns `{ fields: {}, unverified: [] }`
+ *  (never 500) — both keys are therefore optional here too. */
+export type ExtractedFields = {
+  fields?: ExtractedFieldsData;
+  unverified?: string[];
+};
+
+/** Paste raw call notes -> span-verified structured fields. Mirrors the
+ *  whiteboardIntake auth pattern (JSON body this time, not multipart): a 401
+ *  gets exactly one retry after a forced refreshSession(), since this can sit
+ *  on a slow extraction round-trip long enough for a borderline-fresh token
+ *  to expire mid-flight. 404/501 -> EndpointPendingError (unreachable, not a
+ *  real rejection); the backend is documented as never-500, so any other
+ *  non-2xx is surfaced via json()'s plain Error(detail). */
+export async function extractProposalFields(notes: string): Promise<ExtractedFields> {
+  const url = requireUrl();
+  const body = JSON.stringify({ notes });
+
+  const post = (token: string) => fetchWithTimeout(
+    `${url}/proposal-extract-fields`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body },
+    T_MUTATE, 'Extracting fields',
+  );
+
+  let res = await post(await bearer());
+  if (res.status === 401) {
+    await supabase.auth.refreshSession();
+    res = await post(await bearer());
+  }
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/proposal-extract-fields');
+  return json<ExtractedFields>(res);
+}
+
+/** Response shape for POST /proposal-slide-selections. On error, returns
+ *  all-empty defaults (never 500). */
+export type SlideSelections = {
+  verticals_order?: string[];
+  verticals_matched?: string | null;
+  pillars?: string[];
+  // True when the industry couldn't be mapped to a known vertical — the
+  // backend flags this rather than dropping pillars, since donor pillars
+  // are kept as a fallback.
+  pillars_unmapped?: boolean;
+  bolded_services?: string[];
+};
+
+/** Extracted industry + service needs -> the deck's slide-selection scaffold
+ *  (which verticals/pillars/bolded services apply). Same auth + error-mapping
+ *  convention as extractProposalFields above. */
+export async function fetchSlideSelections(
+  industry: string, serviceNeeds: string[],
+): Promise<SlideSelections> {
+  const url = requireUrl();
+  const body = JSON.stringify({ industry, service_needs: serviceNeeds });
+
+  const post = (token: string) => fetchWithTimeout(
+    `${url}/proposal-slide-selections`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body },
+    T_MUTATE, 'Loading slide selections',
+  );
+
+  let res = await post(await bearer());
+  if (res.status === 401) {
+    await supabase.auth.refreshSession();
+    res = await post(await bearer());
+  }
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/proposal-slide-selections');
+  return json<SlideSelections>(res);
+}

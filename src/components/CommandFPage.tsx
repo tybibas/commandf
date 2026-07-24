@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Plus, Database, Upload, Presentation, MessageSquare, Wand2, Loader2,
-  Search, GitCompare, Quote, Layers, Coins, Camera,
+  Search, GitCompare, Quote, Layers, Coins, Camera, NotebookPen,
 } from 'lucide-react';
 import { useToast, ToastContainer } from './Toast';
 import { supabase } from '../lib/supabase';
@@ -30,6 +30,7 @@ import Landing, { type QuickAction, type ExampleCard } from './commandf/Landing'
 import Sidebar from './commandf/Sidebar';
 import DeckSurface from './commandf/DeckSurface';
 import WhiteboardIntake from './commandf/WhiteboardIntake';
+import NotesIntake from './commandf/NotesIntake';
 import DeckStudio from './commandf/DeckStudio';
 import DeckLibrary from './commandf/DeckLibrary';
 import SpendPanel from './commandf/SpendPanel';
@@ -62,7 +63,7 @@ const PROMPT_ICP = 'What ICP and proof points did we lead with for a new client 
 // comparison after an answer with sources lands.
 const PROMPT_COMPARE_SOURCES = 'Compare the engagements cited above side by side: what patterns repeat?';
 
-type Surface = 'home' | 'chat' | 'deck' | 'whiteboard' | 'survey' | 'deckstudio' | 'spend' | 'decks';
+type Surface = 'home' | 'chat' | 'deck' | 'whiteboard' | 'notes' | 'survey' | 'deckstudio' | 'spend' | 'decks';
 
 function greetingForNow(): string {
   // Anchor to Pacific time regardless of the viewer's local zone, so the
@@ -687,6 +688,7 @@ export function CommandFPage({
     { id: 'knowledge', label: 'Open knowledge base', group: 'Actions', icon: Database, hint: docs ? docs.toLocaleString() : undefined, keywords: 'documents sources upload drive', run: () => setShowKnowledge(true) },
     { id: 'deck', label: 'Build a deck', group: 'Actions', icon: Presentation, hint: 'PPTX', keywords: 'presentation slides pptx', run: () => setSurface('deck') },
     { id: 'whiteboard', label: 'Start from a whiteboard photo', group: 'Actions', icon: Camera, hint: 'Photo', keywords: 'whiteboard photo image sketch storyboard picture camera', run: () => setSurface('whiteboard') },
+    { id: 'notes', label: 'Start from call notes', group: 'Actions', icon: NotebookPen, hint: 'Notes', keywords: 'call notes paste transcript intake proposal extract fields', run: () => setSurface('notes') },
     { id: 'spend', label: 'View spend', group: 'Actions', icon: Coins, keywords: 'cost usage anthropic budget ledger spend', run: () => setSurface('spend') },
     { id: 'decks', label: 'Open deck library', group: 'Actions', icon: Layers, keywords: 'decks past builds history library resume', run: () => setSurface('decks') },
     ...(deckStudioSeed
@@ -728,6 +730,7 @@ export function CommandFPage({
     { label: 'Upload a file', icon: Upload, onClick: () => { setShowKnowledge(true); setShowPlus(false); } },
     { label: 'Build a deck', icon: Presentation, onClick: () => { setSurface('deck'); setShowPlus(false); } },
     { label: 'Start from a whiteboard photo', icon: Camera, onClick: () => { setSurface('whiteboard'); setShowPlus(false); } },
+    { label: 'Start from call notes', icon: NotebookPen, onClick: () => { setSurface('notes'); setShowPlus(false); } },
     { label: 'Deck library', icon: Layers, onClick: () => { setSurface('decks'); setShowPlus(false); } },
   ];
 
@@ -847,6 +850,8 @@ export function CommandFPage({
           />
         ) : surface === 'whiteboard' ? (
           <WhiteboardIntake onBack={() => setSurface('home')} onOutlineReady={handleWhiteboardOutline} />
+        ) : surface === 'notes' ? (
+          <NotesIntake onBack={() => setSurface('home')} />
         ) : surface === 'deckstudio' && deckStudioSeed ? (
           <DeckStudio
             onBack={() => setSurface('home')}
