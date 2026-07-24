@@ -8,6 +8,7 @@ const reducedMotion = () =>
 import {
   generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide, startDeckBuild,
   getProposalTeamRoster, getCaseStudyCandidates, DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError,
+  extractProposalFields, fetchSlideSelections, buildProposalDeck,
   type DeckOutline as Outline, type Adviser, type CaseStudyCandidate,
 } from './api';
 import { writeDeckPointer } from './sessionsCache';
@@ -131,6 +132,14 @@ export default function DeckSurface({
   // `sectionSize`, one at a time, with a "build next N slides" continue action.
   const [deckMode, setDeckMode] = useState<'full' | 'sections'>('full');
   const [sectionSize, setSectionSize] = useState(5);
+  // Draft-with-AI vs. verified-facts-only: which build PATH this surface uses.
+  // Distinct from `deckMode` above (full/sections is a shape of the generative
+  // build only). Defaults to 'draft' so existing behavior is unchanged unless
+  // the operator opts into 'verified'.
+  const [buildMode, setBuildMode] = useState<'draft' | 'verified'>('draft');
+  const [verifiedBusy, setVerifiedBusy] = useState(false);
+  const [verifiedError, setVerifiedError] = useState('');
+  const [verifiedPending, setVerifiedPending] = useState(false);
   // Which of the selected type's archetypal briefs the teaching panel is showing.
   const [exampleIdx, setExampleIdx] = useState(0);
 
@@ -328,6 +337,38 @@ export default function DeckSurface({
     }
   };
 
+  // Verified-facts-only build: bypasses the outline/approve gate entirely —
+  // extracts span-verified fields from the SAME Discovery-call-notes brief,
+  // fetches the deterministic slide selections, then drives the build through
+  // the SAME `job` poll (generateDeckStatus / ResultPanel) the generative path
+  // uses, since /proposal-build-deck writes the identical {job_id}.pptx and
+  // returns the same JobStatus shape. Never injects client-side prose — every
+  // field on the deck comes from extractProposalFields' span-gated output.
+  const buildVerified = async () => {
+    if (!canGo || verifiedBusy || jobActive) return;
+    setVerifiedBusy(true); setVerifiedError(''); setVerifiedPending(false);
+    try {
+      const ext = await extractProposalFields(brief);
+      if (!ext.fields || Object.keys(ext.fields).length === 0) {
+        setVerifiedError('Could not verify any facts in these notes — add more detail (client name, industry, service needs) and try again.');
+        return;
+      }
+      let sel: import('./api').SlideSelections | null = null;
+      try {
+        sel = await fetchSlideSelections(ext.fields.industry ?? '', ext.fields.service_needs ?? []);
+      } catch {
+        sel = null; // slide selections are optional scaffolding — a failure here doesn't block the build
+      }
+      const fields = ext.fields;
+      setVerifiedBusy(false);
+      job.run(() => buildProposalDeck(fields, sel));
+    } catch (e: any) {
+      setVerifiedBusy(false);
+      if (e instanceof EndpointPendingError) setVerifiedPending(true);
+      else setVerifiedError(e?.message || 'Could not extract verified facts from these notes.');
+    }
+  };
+
   // Approved-plan build (§3.6): the DEFAULT path now opens the studio the
   // instant the build job exists and watches it author live, instead of
   // waiting for a one-shot `generateDeck` job to finish. Only when the host
@@ -473,8 +514,24 @@ export default function DeckSurface({
           </button>
         )}
 
-        {/* Length */}
+        {/* Draft with AI vs. verified facts only — which build PATH this surface
+            uses, from the same Discovery-call-notes brief below. Defaults to
+            'draft' so existing behavior is unchanged unless opted into. */}
         <div className={`${onOpenWhiteboard ? 'mt-6' : ''} flex items-center gap-2 flex-wrap`}>
+          <span className="text-caption text-text-muted font-medium mr-1">Mode</span>
+          {([['draft', 'Draft with AI'], ['verified', 'Verified facts only']] as const).map(([id, label]) => (
+            <button key={id} type="button" onClick={() => setBuildMode(id)} aria-pressed={buildMode === id}
+              className={`px-2.5 py-1 rounded-control text-caption font-medium transition-colors ${MOTION} ${FOCUS} ${buildMode === id ? CHIP_ON : CHIP_OFF}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Length — draft-with-AI only: shapes the generative outline request.
+            The verified build has no free-form outline step, so this control
+            has no effect there; hidden rather than left looking active. */}
+        {buildMode === 'draft' && (
+        <div className="mt-4 flex items-center gap-2 flex-wrap">
           <span className="text-caption text-text-muted font-medium mr-1">Target length</span>
           {LENGTHS.map((l) => (
             <button key={l.id} type="button" onClick={() => { setLength(l.id); setLenCustom(''); }} aria-pressed={length === l.id}
@@ -491,8 +548,12 @@ export default function DeckSurface({
               placeholder="40" aria-label="Custom slide count" className={NUM_INPUT} />
           )}
         </div>
+        )}
 
-        {/* Build mode: full deck vs. in sections (chunked, continue-able) */}
+        {/* Build mode: full deck vs. in sections (chunked, continue-able) —
+            draft-with-AI only; the verified build is a single fixed-template
+            pass with no chunking. */}
+        {buildMode === 'draft' && (
         <div className="mt-4 flex items-center gap-2 flex-wrap">
           <span className="text-caption text-text-muted font-medium mr-1">Build</span>
           {([['full', 'Full deck'], ['sections', 'In sections']] as const).map(([id, label]) => (
@@ -510,7 +571,8 @@ export default function DeckSurface({
             </span>
           )}
         </div>
-        {deckMode === 'sections' && (
+        )}
+        {buildMode === 'draft' && deckMode === 'sections' && (
           <p className="mt-2 text-caption text-text-muted leading-relaxed">
             Section 1: slides 1–{fullCount ? Math.min(sectionSize, fullCount) : sectionSize}
             {fullCount ? ` of ~${fullCount}` : ''}. The full deck is planned; you build and
@@ -519,27 +581,32 @@ export default function DeckSurface({
         )}
 
         {/* Prospect (optional) — proposal-only cover data: name + logo on the
-            cover slide. Sent as prospect_company / prospect_website. */}
+            cover slide. Sent as prospect_company / prospect_website. In verified
+            mode, client_name comes from extraction, not this field — kept
+            visible (the operator may still want it for their own reference)
+            but annotated so it isn't mistaken for wired input. */}
         {showProspectFields && (
           <div className="mt-5">
             <p className="text-caption text-text-muted font-medium mb-1.5">Prospect (optional)</p>
             <p className="text-caption text-text-muted mb-2 leading-relaxed">
-              Adds the prospect&#39;s name and logo to the cover.
+              {buildMode === 'verified'
+                ? 'Used in Draft-with-AI mode only. Verified builds derive the client name from your notes, not this field.'
+                : "Adds the prospect's name and logo to the cover."}
             </p>
             <div className="flex flex-col sm:flex-row gap-2.5">
               <div className="flex-1">
                 <label htmlFor="prospect-company" className="sr-only">Prospect company</label>
                 <input id="prospect-company" type="text" value={prospectCompany}
                   onChange={(e) => setProspectCompany(e.target.value)}
-                  placeholder="e.g. Meridian Mutual Insurance"
-                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+                  placeholder="e.g. Meridian Mutual Insurance" disabled={buildMode === 'verified'}
+                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS} disabled:opacity-50 disabled:cursor-not-allowed`} />
               </div>
               <div className="flex-1">
                 <label htmlFor="prospect-website" className="sr-only">Website URL</label>
                 <input id="prospect-website" type="text" value={prospectWebsite}
                   onChange={(e) => setProspectWebsite(e.target.value)}
-                  placeholder="e.g. https://meridianmutual.com"
-                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+                  placeholder="e.g. https://meridianmutual.com" disabled={buildMode === 'verified'}
+                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS} disabled:opacity-50 disabled:cursor-not-allowed`} />
               </div>
             </div>
           </div>
@@ -548,8 +615,18 @@ export default function DeckSurface({
         {/* What to include (optional) — proposal-only scoping: shapes the drafted
             outline. Sent as flat include_case_studies / case_study_count /
             case_studies_detail / include_senior_advisor_panel / senior_advisors /
-            include_professional_arrangements / professional_arrangements_detail. */}
-        {showProspectFields && (
+            include_professional_arrangements / professional_arrangements_detail.
+            Draft-with-AI only — the verified build has no outline-scoping step. */}
+        {showProspectFields && buildMode === 'verified' && (
+          <div className="mt-5">
+            <p className="text-caption text-text-muted font-medium mb-1.5">What to include</p>
+            <p className="text-caption text-text-muted leading-relaxed">
+              Used in Draft-with-AI mode only. The verified build uses a fixed template scaffold —
+              case studies, the senior advisor panel, and professional arrangements aren&#39;t scoped here.
+            </p>
+          </div>
+        )}
+        {showProspectFields && buildMode === 'draft' && (
           <div className="mt-5">
             <p className="text-caption text-text-muted font-medium mb-1.5">What to include (optional)</p>
             <p className="text-caption text-text-muted mb-2 leading-relaxed">
@@ -715,16 +792,22 @@ export default function DeckSurface({
             <ComposerTools value={brief} onChange={setBrief}
               onFocusRestore={() => document.getElementById('deck-brief')?.focus()} />
           </div>
+          {buildMode === 'verified' && (
+            <p className="mt-2 text-caption text-text-muted leading-relaxed">
+              Builds a pixel-identical deck from only the facts verified in your notes — no
+              AI-written prose. Context/problem slides stay as scaffold.
+            </p>
+          )}
         </div>
 
         {/* Live "agent thinking" — §3.5 phase events drive the status line; the
             canned OUTLINE_PHASES step only during the cold-start gap before the
             first phase arrives. Button → live phases → outline approval, one flow. */}
-        {outlinePhase === 'loading' && (
+        {buildMode === 'draft' && outlinePhase === 'loading' && (
           <RunningPanel label="Drafting the outline…" phases={OUTLINE_PHASES} progress={outlineProgress} />
         )}
-        {outlinePhase === 'error' && <p className="mt-3 text-caption text-error leading-relaxed">{outlineError}</p>}
-        {outlinePhase === 'pending' && (
+        {buildMode === 'draft' && outlinePhase === 'error' && <p className="mt-3 text-caption text-error leading-relaxed">{outlineError}</p>}
+        {buildMode === 'draft' && outlinePhase === 'pending' && (
           <div className="mt-3 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3">
             <div className="flex items-start gap-2.5">
               <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
@@ -736,13 +819,44 @@ export default function DeckSurface({
           </div>
         )}
 
-        {/* Actions: every deck goes through the outline gate (approve, then build). */}
+        {/* Verified-facts-only progress/error/pending — mirrors the draft path's
+            states but for extractProposalFields (no job yet at this stage; once
+            job.run() starts, the shared jobActive branch above takes over). */}
+        {buildMode === 'verified' && verifiedBusy && (
+          <RunningPanel label="Verifying facts in your notes…" phases={['Extracting verified facts…', 'Loading slide selections…']} progress="" />
+        )}
+        {buildMode === 'verified' && !!verifiedError && (
+          <p className="mt-3 text-caption text-error leading-relaxed">{verifiedError}</p>
+        )}
+        {buildMode === 'verified' && verifiedPending && (
+          <div className="mt-3 rounded-surface border border-border-light bg-bg-secondary/60 px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <Info className="w-4 h-4 text-info shrink-0 mt-0.5" strokeWidth={1.75} aria-hidden />
+              <p className="text-caption leading-relaxed text-text-secondary">
+                <span className="font-medium text-text-primary">Couldn't reach the verified-build service.</span>{' '}
+                Your notes are saved. Try again in a moment.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Actions: draft mode goes through the outline gate (approve, then
+            build); verified mode skips straight to the build — there is no
+            free-form outline to approve, only extracted facts. */}
         <div className="mt-auto pt-6 flex items-center justify-end gap-3">
-          <button type="button" onClick={draftOutline} disabled={!canGo || outlinePhase === 'loading'}
-            className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
-            {outlinePhase === 'loading' ? <Sparkles className="w-4 h-4 animate-pulse" strokeWidth={1.75} /> : <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
-            {outlinePhase === 'loading' ? 'Drafting outline…' : 'Draft outline →'}
-          </button>
+          {buildMode === 'draft' ? (
+            <button type="button" onClick={draftOutline} disabled={!canGo || outlinePhase === 'loading'}
+              className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
+              {outlinePhase === 'loading' ? <Sparkles className="w-4 h-4 animate-pulse" strokeWidth={1.75} /> : <Sparkles className="w-4 h-4" strokeWidth={1.75} />}
+              {outlinePhase === 'loading' ? 'Drafting outline…' : 'Draft outline →'}
+            </button>
+          ) : (
+            <button type="button" onClick={buildVerified} disabled={!canGo || verifiedBusy}
+              className={`shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}>
+              {verifiedBusy ? <Sparkles className="w-4 h-4 animate-pulse" strokeWidth={1.75} /> : <Check className="w-4 h-4" strokeWidth={1.75} />}
+              {verifiedBusy ? 'Verifying…' : 'Build verified deck →'}
+            </button>
+          )}
         </div>
       </div>
     </Shell>
@@ -780,6 +894,7 @@ export default function DeckSurface({
   function resetAll() {
     setOutline(null); setOutlinePhase('idle'); setOutlineError(''); setOutlineProgress('');
     setBuiltPlan(null); setEditBusy(null); setEditError(null); setEditedResult(null); job.reset();
+    setVerifiedBusy(false); setVerifiedError(''); setVerifiedPending(false);
   }
 }
 
