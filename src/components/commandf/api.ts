@@ -1450,36 +1450,36 @@ export async function whiteboardIntake(file: File, requestHint?: string, signal?
 // ── Call-notes intake — raw notes → span-verified fields, no RAG retrieval ──
 // Backend: POST /proposal-extract-fields + POST /proposal-slide-selections
 // (Modal v82, auth-enforced, never-500). Two independent, synchronous calls —
-// no job/poll. The exact response shape is not yet published in a shared
-// contract doc, so both interfaces below are defined PERMISSIVELY (every
-// field optional) and the UI renders defensively: a missing/empty field is
-// shown as "—", never invented. `unverified` is the span-gate's own list of
-// rejected/dropped items — surfaced as-is, not summarized.
+// no job/poll. Response shapes below are the REAL wire contract confirmed
+// against the deployed handler (modal_commandf.py) via a live E2E run — every
+// field optional/nullable (the backend only ever emits what it could verify
+// against a span in the pasted notes) and the UI renders defensively: a
+// missing/empty field is shown as "—", never invented. `unverified` is the
+// span-gate's own flat list of rejected/dropped item descriptions.
 
 export type ExtractedContact = {
   name?: string;
   title?: string;
-  email?: string;
-  phone?: string;
 };
 
-/** Response shape for POST /proposal-extract-fields. Every field is optional —
- *  the backend only ever emits what it could verify against a span in the
- *  pasted notes; anything it couldn't confirm is left out and instead listed
- *  (as free text) in `unverified`. */
-export type ExtractedFields = {
+/** The verified-fields payload nested under `fields` in the extract response. */
+export type ExtractedFieldsData = {
   client_name?: string;
-  contacts?: ExtractedContact[];
   deal_size?: string;
   timeline?: string;
   financing_need?: string;
   industry?: string;
   segments?: string[];
-  service_needs?: string[];
   company_facts?: string[];
-  // Span-gate rejects — items the extractor considered but could not verify
-  // against the source text. Required-in-spirit (always rendered, even when
-  // empty) so the UI can prove nothing was fabricated.
+  service_needs?: string[];
+  client_contacts?: ExtractedContact[];
+};
+
+/** Response shape for POST /proposal-extract-fields. On empty/no-notes or any
+ *  internal error the backend returns `{ fields: {}, unverified: [] }`
+ *  (never 500) — both keys are therefore optional here too. */
+export type ExtractedFields = {
+  fields?: ExtractedFieldsData;
   unverified?: string[];
 };
 
@@ -1509,14 +1509,17 @@ export async function extractProposalFields(notes: string): Promise<ExtractedFie
   return json<ExtractedFields>(res);
 }
 
-/** Response shape for POST /proposal-slide-selections. */
+/** Response shape for POST /proposal-slide-selections. On error, returns
+ *  all-empty defaults (never 500). */
 export type SlideSelections = {
   verticals_order?: string[];
+  verticals_matched?: string | null;
   pillars?: string[];
+  // True when the industry couldn't be mapped to a known vertical — the
+  // backend flags this rather than dropping pillars, since donor pillars
+  // are kept as a fallback.
+  pillars_unmapped?: boolean;
   bolded_services?: string[];
-  // Service needs / industry terms the backend couldn't map to a known
-  // vertical or pillar — surfaced as a flag, never silently dropped.
-  unmapped?: string[];
 };
 
 /** Extracted industry + service needs -> the deck's slide-selection scaffold

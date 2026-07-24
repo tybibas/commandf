@@ -108,8 +108,8 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
 
   const loadSelections = async () => {
     if (!fields || selectionsPhase === 'loading') return;
-    const industry = fields.industry?.trim();
-    const serviceNeeds = (fields.service_needs ?? []).filter((s) => s?.trim());
+    const industry = fields.fields?.industry?.trim();
+    const serviceNeeds = (fields.fields?.service_needs ?? []).filter((s) => s?.trim());
     if (!industry && serviceNeeds.length === 0) {
       setSelectionsError('No industry or service needs were verified in these notes to map slide selections from.');
       setSelectionsPhase('error');
@@ -219,22 +219,16 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
                   </div>
 
                   <div className="rounded-surface border border-border-light bg-bg-secondary/60 p-4 space-y-4">
-                    <Field label="Client" value={fields?.client_name} />
+                    <Field label="Client" value={fields?.fields?.client_name} />
 
                     <div>
                       <p className="eyebrow text-text-muted">Contacts</p>
-                      {(fields?.contacts ?? []).length > 0 ? (
+                      {(fields?.fields?.client_contacts ?? []).length > 0 ? (
                         <ul className="mt-1.5 space-y-1.5">
-                          {(fields?.contacts ?? []).map((c, i) => (
+                          {(fields?.fields?.client_contacts ?? []).map((c, i) => (
                             <li key={i} className="text-body-sm text-text-primary">
                               {c.name || '—'}
                               {c.title ? <span className="text-text-secondary"> &middot; {c.title}</span> : null}
-                              {(c.email || c.phone) && (
-                                <span className="text-text-muted">
-                                  {' '}&middot;{' '}
-                                  {[c.email, c.phone].filter(Boolean).join(' · ')}
-                                </span>
-                              )}
                             </li>
                           ))}
                         </ul>
@@ -244,14 +238,14 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <Field label="Deal size" value={fields?.deal_size} />
-                      <Field label="Timeline" value={fields?.timeline} />
+                      <Field label="Deal size" value={fields?.fields?.deal_size} />
+                      <Field label="Timeline" value={fields?.fields?.timeline} />
                     </div>
-                    <Field label="Financing need" value={fields?.financing_need} />
-                    <Field label="Industry" value={fields?.industry} />
-                    <ChipList label="Segments" items={fields?.segments} />
-                    <ChipList label="Service needs" items={fields?.service_needs} />
-                    <ChipList label="Company facts" items={fields?.company_facts} />
+                    <Field label="Financing need" value={fields?.fields?.financing_need} />
+                    <Field label="Industry" value={fields?.fields?.industry} />
+                    <ChipList label="Segments" items={fields?.fields?.segments} />
+                    <ChipList label="Service needs" items={fields?.fields?.service_needs} />
+                    <ChipList label="Company facts" items={fields?.fields?.company_facts} />
                   </div>
 
                   {/* Unverified/dropped — the trust surface. Always rendered once
@@ -301,19 +295,12 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
                         <ChipList label="Verticals order" items={selections.verticals_order} />
                         <ChipList label="Pillars" items={selections.pillars} />
                         <ChipList label="Bolded services" items={selections.bolded_services} />
-                        {(selections.unmapped ?? []).filter((s) => s?.trim()).length > 0 && (
-                          <div>
-                            <div className="flex items-center gap-1.5">
-                              <EyeOff className="w-3.5 h-3.5 text-warning" strokeWidth={1.75} aria-hidden />
-                              <p className="eyebrow text-warning">Unmapped</p>
-                            </div>
-                            <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              {(selections.unmapped ?? []).filter((s) => s?.trim()).map((s, i) => (
-                                <span key={`${s}-${i}`} className="inline-flex items-center px-2 py-0.5 rounded-control bg-warning-soft text-caption text-warning">
-                                  {s}
-                                </span>
-                              ))}
-                            </div>
+                        {selections.pillars_unmapped && (
+                          <div className="flex items-center gap-1.5">
+                            <EyeOff className="w-3.5 h-3.5 text-warning" strokeWidth={1.75} aria-hidden />
+                            <p className="text-caption text-warning leading-relaxed">
+                              Industry not mapped &mdash; donor pillars kept
+                            </p>
                           </div>
                         )}
                       </div>
