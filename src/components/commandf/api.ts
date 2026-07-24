@@ -1665,3 +1665,39 @@ export async function fetchSlideSelections(
   if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/proposal-slide-selections');
   return json<SlideSelections>(res);
 }
+
+// ── Call-notes intake — Step 3: build the deck from the verified fields ─────
+// Backend: POST /proposal-build-deck (auth-enforced, same convention as the two
+// calls above). Trigger-only: returns 202 { job_id, status:"queued" } and the
+// caller polls the SAME generic job-status route every other deck build uses
+// (`GET /generate-deck/{job_id}/status`, i.e. `generateDeckStatus` above) and
+// downloads via the existing `downloadDeckPptx` — this endpoint's job writes
+// the identical `{job_id}.pptx` artifact, so neither is duplicated here.
+
+/** Kick off a deck build from the Step-1 verified fields (+ optional Step-2
+ *  slide selections). `fields` is the INNER fields object (`ExtractedFields.fields`),
+ *  not the `{fields, unverified}` wrapper; `selections` is the whole
+ *  SlideSelections object, or null when the consultant hasn't run Step 2.
+ *  Same auth + 401-retry + 404/501 convention as extractProposalFields /
+ *  fetchSlideSelections. Bad body -> 400 surfaced via json()'s plain Error;
+ *  the backend never 500s. */
+export async function buildProposalDeck(
+  fields: ExtractedFieldsData, selections: SlideSelections | null,
+): Promise<{ job_id: string; status: string }> {
+  const url = requireUrl();
+  const body = JSON.stringify({ fields, selections });
+
+  const post = (token: string) => fetchWithTimeout(
+    `${url}/proposal-build-deck`,
+    { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body },
+    T_GEN, 'Starting deck build',
+  );
+
+  let res = await post(await bearer());
+  if (res.status === 401) {
+    await supabase.auth.refreshSession();
+    res = await post(await bearer());
+  }
+  if (res.status === 404 || res.status === 501) throw new EndpointPendingError('/proposal-build-deck');
+  return json<{ job_id: string; status: string }>(res);
+}
