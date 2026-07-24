@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ArrowLeft, NotebookPen, ShieldCheck, EyeOff, Sparkles, ListChecks, Layers,
+  FileOutput, Download, Check, Loader2,
 } from 'lucide-react';
 import {
-  extractProposalFields, fetchSlideSelections, EndpointPendingError,
+  extractProposalFields, fetchSlideSelections, buildProposalDeck, generateDeckStatus,
+  downloadDeckPptx, EndpointPendingError,
   type ExtractedFields, type SlideSelections,
 } from './api';
 import { RunningPanel, ErrorPanel, PendingNote } from './generationUI';
+import { useJob } from './useJob';
 
 const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring focus-visible:ring-offset-0';
 const MOTION = 'duration-fast ease-out-expo';
@@ -21,9 +24,11 @@ const CAPABILITIES = [
 
 const EXTRACTING_PHASES = ['Reading your notes…', 'Verifying each fact against the source…'];
 const SELECTIONS_PHASES = ['Mapping industry and services…', 'Selecting slides…'];
+const BUILD_PHASES = ['Queuing the build…', 'Rendering slides…', 'Assembling the deck…'];
 
 type Phase = 'idle' | 'extracting' | 'pending' | 'error';
 type SelectionsPhase = 'idle' | 'loading' | 'pending' | 'error';
+type BuildPhase = 'idle' | 'building' | 'polling' | 'complete' | 'error';
 
 /** Renders a single value, or "—" when absent/empty — never invented text. */
 function Field({ label, value }: { label: string; value?: string | null }) {
@@ -81,6 +86,15 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
   const [selectionsError, setSelectionsError] = useState('');
   const [selections, setSelections] = useState<SlideSelections | null>(null);
 
+  // Step 3 — build the deck. Trigger (buildPhase) is separate from the poll
+  // lifecycle (useJob), which mirrors DeckSurface's own build path exactly:
+  // same generateDeckStatus poll, same downloadDeckPptx download.
+  const [buildPhase, setBuildPhase] = useState<BuildPhase>('idle');
+  const [buildError, setBuildError] = useState('');
+  const [buildEndpointPending, setBuildEndpointPending] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const buildJob = useJob(generateDeckStatus);
+
   // Guards the cancel-ambush (same pattern as WhiteboardIntake): Back is
   // clickable mid-extraction; without this, a resolved extraction after the
   // user already left would still setState into an unmounted surface.
@@ -129,11 +143,41 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
     }
   };
 
+  const buildDeck = async () => {
+    if (!fields?.fields || buildPhase === 'building' || buildPhase === 'polling') return;
+    setBuildPhase('building'); setBuildError(''); setBuildEndpointPending(false);
+    buildJob.run(async () => {
+      const started = await buildProposalDeck(fields.fields!, selections);
+      return { job_id: started.job_id };
+    });
+  };
+
+  // Mirror the shared useJob lifecycle into this surface's buildPhase, so Step
+  // 3 renders with the same RunningPanel/ErrorPanel/PendingNote language the
+  // other two steps already use, rather than reading buildJob.phase directly.
+  useEffect(() => {
+    if (buildJob.phase === 'starting' || buildJob.phase === 'running') setBuildPhase('polling');
+    else if (buildJob.phase === 'complete') setBuildPhase('complete');
+    else if (buildJob.phase === 'error') { setBuildError(buildJob.error || 'Could not build the deck.'); setBuildPhase('error'); }
+    else if (buildJob.phase === 'pending') { setBuildEndpointPending(true); setBuildPhase('error'); }
+  }, [buildJob.phase, buildJob.error]);
+
+  const buildResult = buildJob.result;
+  const handleDownload = () => {
+    if (!buildJob.jobId || downloading) return;
+    setDownloading(true);
+    downloadDeckPptx(buildJob.jobId, buildResult?.title).finally(() => setDownloading(false));
+  };
+
   const reset = () => {
     setFields(null);
     setSelections(null);
     setSelectionsPhase('idle');
     setSelectionsError('');
+    setBuildPhase('idle');
+    setBuildError('');
+    setBuildEndpointPending(false);
+    buildJob.reset();
   };
 
   // The textarea view is shown until fields have actually come back — it also
@@ -303,6 +347,64 @@ export default function NotesIntake({ onBack }: { onBack: () => void }) {
                             </p>
                           </div>
                         )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Step 3 — build the deck. Available once fields exist; slide
+                      selections are optional (the endpoint accepts selections: null). */}
+                  <div className="mt-6 pt-5 border-t border-hairline">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-caption text-text-muted font-medium">Build the deck</p>
+                      {buildPhase !== 'complete' && (
+                        <button
+                          type="button" onClick={buildDeck}
+                          disabled={!fields?.fields || buildPhase === 'building' || buildPhase === 'polling'}
+                          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}
+                        >
+                          <FileOutput className="w-3.5 h-3.5" strokeWidth={1.75} />
+                          Build the deck &rarr;
+                        </button>
+                      )}
+                    </div>
+                    {!selections && buildPhase === 'idle' && (
+                      <p className="mt-1.5 text-caption text-text-muted leading-relaxed">
+                        Slide selections above are optional &mdash; the deck builds fine without them.
+                      </p>
+                    )}
+
+                    {(buildPhase === 'building' || buildPhase === 'polling') && (
+                      <RunningPanel
+                        label="Building your deck…"
+                        phases={BUILD_PHASES}
+                        progress={buildResult?.progress}
+                      />
+                    )}
+
+                    {buildPhase === 'error' && buildEndpointPending && (
+                      <PendingNote endpoint="POST /proposal-build-deck" />
+                    )}
+                    {buildPhase === 'error' && !buildEndpointPending && (
+                      <ErrorPanel message={buildError} onRetry={buildDeck} />
+                    )}
+
+                    {buildPhase === 'complete' && (
+                      <div className="mt-3 rounded-surface border border-border-light bg-bg-secondary/60 p-4">
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <Check className="w-3.5 h-3.5 text-success shrink-0" strokeWidth={3} aria-hidden />
+                          <p className="text-caption text-text-muted font-medium">
+                            {buildResult?.title || (typeof buildResult?.slide_count === 'number' ? `${buildResult.slide_count} slides` : 'Deck ready')}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button" onClick={handleDownload} disabled={downloading}
+                            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-pill text-caption font-medium disabled:opacity-40 ${PILL_BTN}`}
+                          >
+                            {downloading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" strokeWidth={1.75} />}
+                            {downloading ? 'Preparing…' : 'Download again'}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
