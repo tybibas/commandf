@@ -581,31 +581,29 @@ export default function DeckSurface({
         )}
 
         {/* Prospect (optional) — proposal-only cover data: name + logo on the
-            cover slide. Sent as prospect_company / prospect_website. In verified
-            mode, client_name comes from extraction, not this field — kept
-            visible (the operator may still want it for their own reference)
-            but annotated so it isn't mistaken for wired input. */}
-        {showProspectFields && (
+            cover slide. Sent as prospect_company / prospect_website. Draft-with-AI
+            ONLY: in verified mode the client_name is derived from the notes by
+            extraction, so this field has no effect and is hidden entirely (a
+            disabled-but-visible field reads as broken). */}
+        {showProspectFields && buildMode === 'draft' && (
           <div className="mt-5">
             <p className="text-caption text-text-muted font-medium mb-1.5">Prospect (optional)</p>
             <p className="text-caption text-text-muted mb-2 leading-relaxed">
-              {buildMode === 'verified'
-                ? 'Used in Draft-with-AI mode only. Verified builds derive the client name from your notes, not this field.'
-                : "Adds the prospect's name and logo to the cover."}
+              Adds the prospect's name and logo to the cover.
             </p>
             <div className="flex flex-col sm:flex-row gap-2.5">
               <div className="flex-1">
                 <label htmlFor="prospect-company" className="sr-only">Prospect company</label>
                 <input id="prospect-company" type="text" value={prospectCompany}
                   onChange={(e) => setProspectCompany(e.target.value)}
-                  placeholder="e.g. Meridian Mutual Insurance" disabled={buildMode === 'verified'}
+                  placeholder="e.g. Meridian Mutual Insurance"
                   className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS} disabled:opacity-50 disabled:cursor-not-allowed`} />
               </div>
               <div className="flex-1">
                 <label htmlFor="prospect-website" className="sr-only">Website URL</label>
                 <input id="prospect-website" type="text" value={prospectWebsite}
                   onChange={(e) => setProspectWebsite(e.target.value)}
-                  placeholder="e.g. https://meridianmutual.com" disabled={buildMode === 'verified'}
+                  placeholder="e.g. https://meridianmutual.com"
                   className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS} disabled:opacity-50 disabled:cursor-not-allowed`} />
               </div>
             </div>
@@ -616,16 +614,9 @@ export default function DeckSurface({
             outline. Sent as flat include_case_studies / case_study_count /
             case_studies_detail / include_senior_advisor_panel / senior_advisors /
             include_professional_arrangements / professional_arrangements_detail.
-            Draft-with-AI only — the verified build has no outline-scoping step. */}
-        {showProspectFields && buildMode === 'verified' && (
-          <div className="mt-5">
-            <p className="text-caption text-text-muted font-medium mb-1.5">What to include</p>
-            <p className="text-caption text-text-muted leading-relaxed">
-              Used in Draft-with-AI mode only. The verified build uses a fixed template scaffold —
-              case studies, the senior advisor panel, and professional arrangements aren&#39;t scoped here.
-            </p>
-          </div>
-        )}
+            Draft-with-AI ONLY — the verified build has no outline-scoping step, so
+            this whole section is hidden in verified mode (nothing actionable to
+            show; a disabled note reads as broken). */}
         {showProspectFields && buildMode === 'draft' && (
           <div className="mt-5">
             <p className="text-caption text-text-muted font-medium mb-1.5">What to include (optional)</p>
