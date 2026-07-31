@@ -1,6 +1,6 @@
 import { useState, useEffect, type ReactNode } from 'react';
 import {
-  Presentation, Sparkles, ArrowLeft, ArrowUpRight, Database, Layers, FileText, Info, Check,
+  Presentation, Sparkles, ArrowLeft, Database, Layers, FileText, Info, Check,
 } from 'lucide-react';
 
 const reducedMotion = () =>
@@ -63,7 +63,7 @@ type OutlinePhase = 'idle' | 'loading' | 'error' | 'pending';
 
 export default function DeckSurface({
   onBack, clientSlug, sessionId, initialBrief, initialFileIds, initialOutline, onOutlineConsumed,
-  onOpenWhiteboard, onOpenStudio,
+  onOpenStudio,
 }: {
   onBack: () => void;
   clientSlug?: string;
@@ -83,7 +83,6 @@ export default function DeckSurface({
   // are read only at mount) so navigating back to this surface later doesn't
   // silently reopen a stale photo's outline.
   onOutlineConsumed?: () => void;
-  onOpenWhiteboard?: () => void;
   // Deck Studio (C-2) handoff. `seed`+`buildStatus` omitted (undefined/null) means
   // "open against an in-flight build" (§3.6) — the default approved-plan flow now
   // goes through this path. When absent entirely, DeckSurface falls back to the
@@ -575,26 +574,24 @@ export default function DeckSurface({
         examples={activeType.examples} idx={exampleIdx} onPick={setExampleIdx} onUse={useExample} />
     }>
       <div className="flex flex-col px-6 pt-3 pb-6 md:px-7 md:pb-7">
-        {onOpenWhiteboard && (
-          <button type="button" onClick={onOpenWhiteboard}
-            className={`inline-flex items-center gap-1 self-start text-caption text-text-muted hover:text-text-primary transition-colors ${FOCUS} rounded-control`}>
-            Have a whiteboard photo instead? Start from that
-            <ArrowUpRight className="w-3 h-3" strokeWidth={2} aria-hidden />
-          </button>
-        )}
-
-        {/* Draft with AI vs. verified facts only — which build PATH this surface
-            uses, from the same Discovery-call-notes brief below. Defaults to
-            'draft' so existing behavior is unchanged unless opted into. */}
-        <div className={`${onOpenWhiteboard ? 'mt-6' : ''} flex items-center gap-2 flex-wrap`}>
+        {/* "Let AI draft" vs. "From my notes only" — which build PATH this
+            surface uses, from the same Discovery-call-notes brief below. Labels
+            only; the underlying mode values stay 'draft' / 'verified'. Defaults
+            to 'draft' so existing behavior is unchanged unless opted into. */}
+        <div className="flex items-center gap-2 flex-wrap">
           <span className="text-caption text-text-muted font-medium mr-1">Mode</span>
-          {([['draft', 'Draft with AI'], ['verified', 'Verified facts only']] as const).map(([id, label]) => (
+          {([['draft', 'Let AI draft'], ['verified', 'From my notes only']] as const).map(([id, label]) => (
             <button key={id} type="button" onClick={() => setBuildMode(id)} aria-pressed={buildMode === id}
               className={`px-2.5 py-1 rounded-control text-caption font-medium transition-colors ${MOTION} ${FOCUS} ${buildMode === id ? CHIP_ON : CHIP_OFF}`}>
               {label}
             </button>
           ))}
         </div>
+        <p className="mt-2 text-caption text-text-muted leading-relaxed">
+          {buildMode === 'verified'
+            ? 'Only facts found word-for-word in your notes. Anything unprovable is left blank.'
+            : 'AI writes the prose, using your notes as source material.'}
+        </p>
 
         {/* Length — draft-with-AI only: shapes the generative outline request.
             The verified build has no free-form outline step, so this control
