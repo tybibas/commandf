@@ -7,9 +7,11 @@ const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 import {
   generateDeck, generateDeckStatus, streamDeckOutline, editDeckSlide, startDeckBuild,
-  getProposalTeamRoster, getCaseStudyCandidates, DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError,
+  getProposalTeamRoster, getCaseStudyCandidates, getAdvisorCandidates,
+  DECK_ENUM_TYPES, EndpointPendingError, StreamAbortedError,
   extractProposalFields, fetchSlideSelections, buildProposalDeck,
   type DeckOutline as Outline, type Adviser, type CaseStudyCandidate,
+  type AdvisorCandidate,
 } from './api';
 import { writeDeckPointer } from './sessionsCache';
 import { useJob } from './useJob';
@@ -140,6 +142,23 @@ export default function DeckSurface({
   const [verifiedBusy, setVerifiedBusy] = useState(false);
   const [verifiedError, setVerifiedError] = useState('');
   const [verifiedPending, setVerifiedPending] = useState(false);
+
+  // Senior-advisor sign-off (verified build). Sourced from the permission-gated
+  // POST /proposal-advisor-candidates — a DIFFERENT endpoint from the ungated
+  // `advisers` roster above, deliberately not merged with it. On-demand (the
+  // match depends on the industry the operator types), never fabricated.
+  //
+  // The safety rule this state encodes: `advisorApproved` may only ever contain
+  // names drawn from `advisorShortlist`. `advisorNeedsPermission` is display-only
+  // — it has no toggle handler at all, so an uncleared advisor cannot be ticked.
+  const [advisorIndustry, setAdvisorIndustry] = useState('');
+  const [advisorEngagementSize, setAdvisorEngagementSize] = useState<'smaller' | 'larger'>('smaller');
+  const [advisorShortlist, setAdvisorShortlist] = useState<AdvisorCandidate[]>([]);
+  const [advisorNeedsPermission, setAdvisorNeedsPermission] = useState<AdvisorCandidate[]>([]);
+  const [advisorApproved, setAdvisorApproved] = useState<string[]>([]);
+  const [advisorLoading, setAdvisorLoading] = useState(false);
+  const [advisorSearched, setAdvisorSearched] = useState(false);
+  const [advisorError, setAdvisorError] = useState(false);
   // Which of the selected type's archetypal briefs the teaching panel is showing.
   const [exampleIdx, setExampleIdx] = useState(0);
 
@@ -281,6 +300,50 @@ export default function DeckSurface({
     setAcceptedCaseStudies((prev) => (prev.includes(deckRef) ? prev.filter((r) => r !== deckRef) : [...prev, deckRef]));
   };
 
+  // On-demand advisor search, keyed on the industry the operator names (the
+  // brief's prose is not the input the endpoint takes). A re-search replaces
+  // both lists and DROPS any approval no longer on the new shortlist, so an
+  // approved name can never outlive the consent check that produced it.
+  const findAdvisors = () => {
+    const industry = advisorIndustry.trim();
+    if (advisorLoading || !industry) return;
+    setAdvisorLoading(true); setAdvisorError(false); setAdvisorSearched(true);
+    getAdvisorCandidates(industry, advisorEngagementSize)
+      .then(({ shortlist, needs_permission }) => {
+        setAdvisorShortlist(shortlist);
+        setAdvisorNeedsPermission(needs_permission);
+        const cleared = new Set(shortlist.map((a) => a.name));
+        setAdvisorApproved((prev) => prev.filter((n) => cleared.has(n)));
+        // An empty shortlist is a CORRECT result (no cleared advisor in this
+        // vertical), so it is only an ERROR when BOTH lists came back empty —
+        // which is what the fail-soft empty-on-failure response looks like.
+        setAdvisorError(shortlist.length === 0 && needs_permission.length === 0);
+      })
+      .catch(() => setAdvisorError(true))
+      .finally(() => setAdvisorLoading(false));
+  };
+
+  // Sign-off toggle. Guarded against the shortlist as well as being wired only
+  // to shortlist rows: a name absent from the cleared set can never enter the
+  // approved list, whatever calls this.
+  const toggleAdvisorApproval = (name: string) => {
+    if (!advisorShortlist.some((a) => a.name === name)) return;
+    setAdvisorApproved((prev) => (prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]));
+  };
+
+  // The `selections.advisors` key for the build body. Returns undefined — so
+  // the key is ABSENT, not an empty object — whenever nothing is approved, which
+  // keeps an untouched build byte-identical to today's (backend falls back to
+  // donor retention). Names are re-filtered through the shortlist one last time.
+  const advisorSelection = (): import('./api').AdvisorSelection | undefined => {
+    const industry = advisorIndustry.trim();
+    if (!industry) return undefined;
+    const cleared = new Set(advisorShortlist.map((a) => a.name));
+    const approved_names = advisorApproved.filter((n) => cleared.has(n));
+    if (approved_names.length === 0) return undefined;
+    return { industry, engagement_size: advisorEngagementSize, approved_names };
+  };
+
   // Proposal-only scoping fields (flat, on the outline request body — not
   // nested). Backend defaults already match ours (all included, 2 case
   // studies), so a field is only sent when it DIFFERS from that default —
@@ -359,6 +422,12 @@ export default function DeckSurface({
       } catch {
         sel = null; // slide selections are optional scaffolding — a failure here doesn't block the build
       }
+      // Attach the partner-approved advisors, if any. `advisorSelection()`
+      // returns undefined when nothing was approved, in which case `sel` is
+      // passed through untouched (possibly null) and the build body is exactly
+      // what it was before this feature existed.
+      const advisors = advisorSelection();
+      if (advisors) sel = { ...(sel ?? {}), advisors };
       const fields = ext.fields;
       setVerifiedBusy(false);
       job.run(() => buildProposalDeck(fields, sel));
@@ -760,6 +829,141 @@ export default function DeckSurface({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Senior advisors (sign-off) — VERIFIED build only, since that is the
+            path whose `selections` object reaches /proposal-build-deck as
+            `selections.advisors`. Sourced from POST /proposal-advisor-candidates
+            (permission-gated), NOT the ungated /proposal-team-roster used by the
+            draft path's "Senior advisor panel" above.
+
+            The safety contract, rendered: `shortlist` rows are buttons the
+            partner can approve; `needs_permission` rows are plain, non-interactive
+            divs with a visible reason — no checkbox, no handler, nothing to tick.
+            Nothing is approved by default; an empty shortlist prints an honest
+            note rather than a spinner or a fabricated name. */}
+        {showProspectFields && buildMode === 'verified' && (
+          <div className="mt-5">
+            <p className="text-caption text-text-muted font-medium mb-1.5">Senior advisors (optional)</p>
+            <p className="text-caption text-text-muted mb-2 leading-relaxed">
+              Find advisors cleared for this vertical, then sign off on who goes on the deck.
+              Leave this alone and the deck keeps its donor advisors, exactly as before.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2.5">
+              <div className="flex-1">
+                <label htmlFor="advisor-industry" className="sr-only">Industry</label>
+                <input id="advisor-industry" type="text" value={advisorIndustry}
+                  onChange={(e) => setAdvisorIndustry(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); findAdvisors(); } }}
+                  placeholder="Industry — e.g. Aviation"
+                  className={`w-full rounded-control border border-border bg-bg-secondary px-3.5 py-2 text-body-sm text-text-primary placeholder:text-text-muted outline-none focus:border-border-hover focus:bg-bg-elevated transition-colors ${MOTION} ${FOCUS}`} />
+              </div>
+              <div role="group" aria-label="Engagement size" className="flex items-center gap-1.5">
+                {([['smaller', 'Smaller'], ['larger', 'Larger']] as const).map(([id, label]) => (
+                  <button key={id} type="button" onClick={() => setAdvisorEngagementSize(id)}
+                    aria-pressed={advisorEngagementSize === id}
+                    className={`${CHIP} ${advisorEngagementSize === id ? CHIP_ON : CHIP_OFF}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-2">
+              <button type="button" onClick={findAdvisors} disabled={!advisorIndustry.trim() || advisorLoading}
+                className={`${CHIP} ${CHIP_OFF} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                {advisorLoading ? 'Searching…' : advisorSearched ? 'Search again' : 'Find advisors'}
+              </button>
+            </div>
+
+            {advisorSearched && !advisorLoading && (
+              advisorError ? (
+                <p className="mt-2 text-caption text-text-muted">
+                  Couldn&#39;t load advisors for this vertical.
+                </p>
+              ) : (
+                <div className="mt-2 flex flex-col gap-3">
+                  {/* Cleared: the only selectable rows. */}
+                  <div>
+                    <p className="text-caption text-text-muted mb-1.5">
+                      Permission confirmed
+                      {advisorApproved.length > 0 && (
+                        <span className="text-text-secondary"> · {advisorApproved.length} approved</span>
+                      )}
+                    </p>
+                    {advisorShortlist.length === 0 ? (
+                      <p className="text-caption text-text-muted leading-relaxed">
+                        No permission-cleared advisors for this vertical. The deck keeps its donor advisors.
+                      </p>
+                    ) : (
+                      <div role="group" aria-label="Advisors cleared for sign-off" className="flex flex-col gap-1.5">
+                        {advisorShortlist.map((a) => {
+                          const approved = advisorApproved.includes(a.name);
+                          return (
+                            <button key={a.name} type="button" onClick={() => toggleAdvisorApproval(a.name)}
+                              aria-pressed={approved}
+                              className={`flex items-start gap-2.5 rounded-control border px-3 py-2 text-left transition-colors ${MOTION} ${FOCUS} ${
+                                approved
+                                  ? 'border-success bg-success-soft'
+                                  : 'border-border-light hover:border-border-hover hover:bg-bg-secondary'
+                              }`}>
+                              <span
+                                aria-hidden="true"
+                                className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                                  approved ? 'border-success bg-success text-bg-elevated' : 'border-border-hover'
+                                }`}
+                              >
+                                {approved && <Check className="h-2.5 w-2.5" strokeWidth={3} />}
+                              </span>
+                              <span className="min-w-0 flex-1">
+                                <span className="block text-body-sm font-medium text-text-primary truncate">
+                                  {a.name}
+                                  <span className="font-normal text-text-secondary"> · {a.title}</span>
+                                </span>
+                                {a.bio_extract && (
+                                  <span className="mt-0.5 block text-caption text-text-secondary leading-relaxed line-clamp-2">
+                                    {a.bio_extract}
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Uncleared: visible so the partner can chase consent, but
+                      inert — rendered as static rows, with no button, no
+                      aria-pressed, and no handler to tick. */}
+                  {advisorNeedsPermission.length > 0 && (
+                    <div>
+                      <p className="text-caption text-text-muted mb-1.5">Permission not confirmed</p>
+                      <ul aria-label="Advisors awaiting permission" className="flex flex-col gap-1.5">
+                        {advisorNeedsPermission.map((a) => (
+                          <li key={a.name}
+                            className="flex items-start gap-2.5 rounded-control border border-border-light border-dashed px-3 py-2 opacity-70">
+                            <span aria-hidden="true"
+                              className="mt-0.5 h-4 w-4 shrink-0 rounded-full border border-border-light" />
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-body-sm font-medium text-text-primary truncate">
+                                {a.name}
+                                <span className="font-normal text-text-secondary"> · {a.title}</span>
+                              </span>
+                              <span className="mt-0.5 block text-caption text-text-muted leading-relaxed">
+                                Permission not confirmed — can&#39;t be placed on the deck yet.
+                              </span>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )
+            )}
           </div>
         )}
 

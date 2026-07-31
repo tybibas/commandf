@@ -58,6 +58,43 @@ export type CaseStudyCandidate = {
   why_matched: string;
 };
 
+// A real senior advisor matched to a proposal's industry by the backend's
+// permission-gated roster (`POST /proposal-advisor-candidates`) — never
+// fabricated client-side. There is deliberately NO email/phone on this shape:
+// the endpoint does not return contact details and the UI must never display,
+// request, or invent any.
+//
+// `permission` carries the consent column verbatim. It is NOT the field the UI
+// gates on — the backend already partitions the roster into two lists, and the
+// UI's rule is positional: only members of `shortlist` may ever be selectable.
+export type AdvisorCandidate = {
+  name: string;
+  title: string;
+  bio_extract: string;
+  industry: string;
+  linkedin_url: string;
+  permission: string;
+};
+
+/** `POST /proposal-advisor-candidates` response. `shortlist` = consent
+ *  confirmed ('Y'), the ONLY advisors the operator may approve. `needs_permission`
+ *  = industry-matched but NOT cleared: shown so the partner knows they exist and
+ *  can chase consent, never selectable. An empty `shortlist` is a CORRECT state
+ *  (e.g. Telecomm), not an error. */
+export type AdvisorCandidates = {
+  shortlist: AdvisorCandidate[];
+  needs_permission: AdvisorCandidate[];
+};
+
+/** Approved-advisor payload that rides the build call inside `selections`.
+ *  `approved_names` are names the operator ticked off the SHORTLIST only; the
+ *  backend re-checks consent server-side and refuses anything else. */
+export type AdvisorSelection = {
+  industry: string;
+  engagement_size: 'smaller' | 'larger';
+  approved_names: string[];
+};
+
 // A real past Actionist proposal whose scope-of-activities language grounded a
 // generated deck's scope section (attached to a build job's result — see
 // JobStatus.analogous_proposals). Never fabricated client-side: deck_ref is a
@@ -567,6 +604,39 @@ export async function getCaseStudyCandidates(
     return { candidates: Array.isArray(r?.candidates) ? r.candidates : [] };
   } catch {
     return { candidates: [] };
+  }
+}
+
+/** `POST /proposal-advisor-candidates` — real senior advisors matched to the
+ *  proposal's industry, partitioned by the backend into consent-confirmed
+ *  (`shortlist`) and industry-matched-but-uncleared (`needs_permission`).
+ *
+ *  DISTINCT from `getProposalTeamRoster` above: that is the older, ungated
+ *  `GET /proposal-team-roster` source with no permission column. Do not route
+ *  one through the other.
+ *
+ *  Fail-soft like the roster and case-study calls: a non-200 or network failure
+ *  resolves to empty lists so the caller shows an honest "couldn't load" note
+ *  rather than inventing advisors. Each list is array-guarded independently, so
+ *  a malformed half can't poison the other. */
+export async function getAdvisorCandidates(
+  industry: string, engagement_size: 'smaller' | 'larger',
+): Promise<AdvisorCandidates> {
+  const url = requireUrl();
+  try {
+    const res = await fetchWithTimeout(
+      `${url}/proposal-advisor-candidates`,
+      { method: 'POST', headers: await authHeaders(), body: JSON.stringify({ industry, engagement_size }) },
+      T_MUTATE, 'Finding advisors',
+    );
+    if (!res.ok) return { shortlist: [], needs_permission: [] };
+    const r = await res.json();
+    return {
+      shortlist: Array.isArray(r?.shortlist) ? r.shortlist : [],
+      needs_permission: Array.isArray(r?.needs_permission) ? r.needs_permission : [],
+    };
+  } catch {
+    return { shortlist: [], needs_permission: [] };
   }
 }
 
@@ -1640,6 +1710,12 @@ export type SlideSelections = {
   // are kept as a fallback.
   pillars_unmapped?: boolean;
   bolded_services?: string[];
+  // Partner-approved senior advisors, attached CLIENT-SIDE after the operator
+  // signs off (the /proposal-slide-selections response never carries this key).
+  // Rides the build body as `selections.advisors`. MUST be absent when nothing
+  // was approved, so the build behaves exactly as it did before this existed —
+  // the backend then falls back to donor retention, byte-identical output.
+  advisors?: AdvisorSelection;
 };
 
 /** Extracted industry + service needs -> the deck's slide-selection scaffold
